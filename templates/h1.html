@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Page 1</title>
+    <link rel="stylesheet" href="/static/h1.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css">
+</head>
+
+<body>
+    <div class="sticky-nav">
+        <div class="logo">
+            <img src="/static/logo-removebg-preview.png" alt="Logo" height="50px" width="50px">
+            <h3 style="color:rgb(49, 98, 114);">HopAlong</h3>
+        </div>
+
+        <div>
+            <a href="/" ><button type="button" class="btn btn-outline-primary">Offer Ride</button></a>
+            <a href="/view-rides" ><button type="button" class="btn btn-outline-primary">View Rides</button></a>
+        </div>
+
+    </div>
+
+
+    <div class="main-content">
+
+        <form action="/offer-ride" class="frm" method="post">
+            <div>
+                <h3><strong>Ride Details</strong></h3>
+                <h6 style="color: grey;">Fill in the information about your Ride</h6>
+            </div>
+            <div class="flex">
+                <label for="myName"><strong>Name :</strong></label>
+                <input type="text" name="myName" placeholder="Enter your Name" class="input" required>
+            </div>
+            <div class="c1">
+                <div class="flex w100">
+                    <label for="mystartpoint"><strong>Starting Point :</strong></label>
+                    <input type="text" name="mystartpoint" placeholder="e.g.,Vit Bhopal" class="input" required>
+                </div>
+                <div class="flex w100">
+                    <label for="myendpoint"><strong>Destination :</strong></label>
+                    <input type="text" name="myendpoint" placeholder="e.g.,RKMP Station"class="input" required>
+                </div>
+            </div>
+            <div class="c2">
+                <div class="flex w100">
+                    <label for="myDate"><strong>Date:</strong></label>
+                    <input type="date" name="myDate"class="input" required>
+                </div>
+                <div class="flex w100">
+                    <label for="myTime"><strong>Time:</strong></label>
+                    <input type="time" name="myTime"class="input" required>
+                </div>
+                <div class="flex w100">
+                    <label for="Seats"><strong>Available Seats :</strong></label>
+                    <input type="number" name="Seats" placeholder="1-4"class="input" required>
+                </div>
+            </div>
+            <div class="flex w100">
+                <label for="myFare"><strong>Fare(per person) :</strong></label>
+                <input type="number" name="myFare" placeholder="Enter fare amount" class="input" required>
+            </div>
+                <button type="submit" class="btn btn-primary btn-lg" class="w100">Offer Ride</button>
+        </form>
+    </div>
+
+    </div>
+</body>
+
+</html>

@@ -1,0 +1,141 @@
+.sticky-nav{
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    position: sticky;
+    top: 0;
+    left: 0;
+    background-color:rgb(255, 255, 255) ;
+    padding: 10px;
+    border-bottom: 1px solid rgb(167, 149, 149);
+}
+
+.logo{
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 2px;
+}
+
+.heading{
+    display: flex;
+    flex-direction: column ;
+    margin: auto;
+    padding-top: 4em;
+    padding: 10px;
+    width: 20%;
+}
+.ride-card {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 20px 24px;
+  width: 320px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+  font-family: system-ui, sans-serif;
+}
+
+.ride-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+}
+
+.ride-header h3 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.seats {
+  background: #f59e0b;
+  color: #fff;
+  padding: 4px 10px;
+  font-size: 0.75rem;
+  border-radius: 999px;
+  font-weight: 500;
+}
+
+.route-row {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 10px;
+}
+
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  margin-top: 4px;
+}
+
+.dot.from {
+  background: #3b83f8;
+}
+
+.dot.to {
+  background: #f97316;
+}
+
+.route-text small {
+  font-size: 0.65rem;
+  color: #9ca3af;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+}
+
+.route-text p {
+  margin: 2px 0 0;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: #111827;
+}
+
+.ride-footer {
+  border-top: 1px solid #e5e7eb;
+  padding-top: 10px;
+  display: flex;
+  gap: 12px;
+  justify-content: flex-start;
+  align-items: center;
+  flex-wrap: wrap;
+  font-size: 0.8rem;
+  color: #4b5563;
+}
+
+.price {
+  margin-left: auto;
+  font-weight: bold;
+  color: #111827;
+}
+
+.cont {
+    padding: 20px;
+    width: 100%;
+    display: flex;
+    gap: 20px;
+    flex-wrap: wrap; 
+    justify-content: center;
+}
+
+.ride-detail {
+    width: 350px;
+    margin-top: 40px;
+}
+
+.detail-info p {
+    margin: 4px 0;
+    font-size: 14px;
+}
+
+.btn-box {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+}
+
+.btn-box .btn {
+    width: 100%;
+}
