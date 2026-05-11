@@ -1,9 +1,9 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, FlatList, StyleSheet, Modal, Pressable,
   TouchableOpacity, Alert, ActivityIndicator, Switch,
 } from "react-native";
-import { useRouter } from "expo-router";
+import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
 import {
   getMyRides, getMyBookings, getPendingRatings,
@@ -533,9 +533,10 @@ export default function MyRidesScreen() {
   // ride_id → [pending bookings] where the current user (as driver) still needs to rate each rider
   const [driverPendingByRide, setDriverPendingByRide] = useState<Record<string, any[]>>({});
   const [loading, setLoading] = useState(true);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const fetchAll = async () => {
-    setLoading(true);
+  const fetchAll = useCallback(async (showLoader = false) => {
+    if (showLoader) setLoading(true);
     try {
       const [offersRes, bookingsRes, pendingRes, bidsRes] = await Promise.all([
         getMyRides(),
@@ -547,29 +548,35 @@ export default function MyRidesScreen() {
       setBookings(bookingsRes.data);
       setMyBids(bidsRes.data);
 
-      // Split pending ratings by context
       const riderPendingIds = new Set<string>();
       const byRide: Record<string, any[]> = {};
-
       (pendingRes.data as any[]).forEach((b) => {
         if (b.context === "rate_rider") {
-          // Driver needs to rate this rider
           if (!byRide[b.ride_id]) byRide[b.ride_id] = [];
           byRide[b.ride_id].push(b);
         } else {
-          // "rate_driver" or legacy (no context field) — rider rates driver
           riderPendingIds.add(b.id);
         }
       });
-
       setPendingRatingIds(riderPendingIds);
       setDriverPendingByRide(byRide);
     } finally {
-      setLoading(false);
+      if (showLoader) setLoading(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { fetchAll(); }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchAll(true);
+      intervalRef.current = setInterval(() => fetchAll(false), 10_000);
+      return () => {
+        if (intervalRef.current) {
+          clearInterval(intervalRef.current);
+          intervalRef.current = null;
+        }
+      };
+    }, [fetchAll])
+  );
 
   const activeBids = myBids.filter((b) => ["pending", "countered"].includes(b.status));
   const inactiveBids = myBids.filter((b) => !["pending", "countered"].includes(b.status));
@@ -617,7 +624,7 @@ export default function MyRidesScreen() {
           contentContainerStyle={offers.length === 0 ? styles.center : styles.list}
           ListEmptyComponent={<Text style={styles.empty}>No rides offered yet.</Text>}
           refreshing={loading}
-          onRefresh={fetchAll}
+          onRefresh={() => fetchAll(true)}
         />
       ) : (
         <FlatList
@@ -631,7 +638,7 @@ export default function MyRidesScreen() {
           contentContainerStyle={bookedData.length === 0 ? styles.center : styles.list}
           ListEmptyComponent={<Text style={styles.empty}>No bookings or bids yet.</Text>}
           refreshing={loading}
-          onRefresh={fetchAll}
+          onRefresh={() => fetchAll(true)}
         />
       )}
     </View>
