@@ -18,6 +18,7 @@ def create_app(config_name="default"):
     from .payments.routes import payments_bp
     from .ratings.routes import ratings_bp
     from .bids.routes import bids_bp
+    from .kyc.routes import kyc_bp
 
     app.register_blueprint(auth_bp, url_prefix="/api/auth")
     app.register_blueprint(users_bp, url_prefix="/api/users")
@@ -26,6 +27,7 @@ def create_app(config_name="default"):
     app.register_blueprint(payments_bp, url_prefix="/api/payments")
     app.register_blueprint(ratings_bp, url_prefix="/api/ratings")
     app.register_blueprint(bids_bp, url_prefix="/api/bids")
+    app.register_blueprint(kyc_bp, url_prefix="/api/kyc")
 
     @app.route("/api/health")
     def health():

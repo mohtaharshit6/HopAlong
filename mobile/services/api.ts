@@ -109,6 +109,15 @@ export const submitRating = (booking_id: string, rated_user_id: string, score: n
 
 export const getPendingRatings = () => api.get("/api/ratings/pending");
 
+// ---- KYC ----
+export const getMyKyc = () => api.get("/api/kyc/me");
+export const submitKyc = (data: {
+  dl_number: string;
+  rc_number: string;
+  dl_photo?: string | null;
+  rc_photo?: string | null;
+}) => api.post("/api/kyc", data);
+
 // ---- Users ----
 export const registerPushToken = (push_token: string) =>
   api.put("/api/users/me/push-token", { push_token });

@@ -4,7 +4,7 @@ import {
   StyleSheet, ScrollView, Alert,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
-import { getMe, updateMe, addVehicle } from "../../services/api";
+import { getMe, updateMe, addVehicle, getMyKyc } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import { Colors } from "../../constants/colors";
 
@@ -12,7 +12,9 @@ export default function ProfileScreen() {
   const { user, setAuth, updateUser, clearAuth, token } = useAuthStore();
   const router = useRouter();
   const [name, setName] = useState(user?.name || "");
+  const [upiVpa, setUpiVpa] = useState((user as any)?.upi_vpa || "");
   const [saving, setSaving] = useState(false);
+  const [kyc, setKyc] = useState<any>(null);
   const [showVehicleForm, setShowVehicleForm] = useState(false);
   const [vMake, setVMake] = useState("");
   const [vModel, setVModel] = useState("");
@@ -27,7 +29,11 @@ export default function ProfileScreen() {
         .then((res) => {
           updateUser(res.data);
           setName(res.data.name || "");
+          setUpiVpa(res.data.upi_vpa || "");
         })
+        .catch(() => {});
+      getMyKyc()
+        .then((res) => setKyc(res.data))
         .catch(() => {});
     }, [token])
   );
@@ -35,7 +41,7 @@ export default function ProfileScreen() {
   const handleSaveProfile = async () => {
     setSaving(true);
     try {
-      const res = await updateMe({ name: name.trim() });
+      const res = await updateMe({ name: name.trim(), upi_vpa: upiVpa.trim() || undefined } as any);
       if (token) setAuth(token, res.data);
       Alert.alert("Saved", "Profile updated.");
     } catch (e: any) {
@@ -125,9 +131,67 @@ export default function ProfileScreen() {
         placeholderTextColor={Colors.textSecondary}
         placeholder="Your name"
       />
+
+      <Text style={styles.label}>UPI ID <Text style={styles.optional}>(for receiving payments as driver)</Text></Text>
+      <TextInput
+        style={styles.input}
+        value={upiVpa}
+        onChangeText={setUpiVpa}
+        placeholderTextColor={Colors.textSecondary}
+        placeholder="yourname@upi"
+        autoCapitalize="none"
+        keyboardType="email-address"
+      />
+
       <TouchableOpacity style={styles.btn} onPress={handleSaveProfile} disabled={saving}>
         <Text style={styles.btnText}>{saving ? "Saving…" : "Save Profile"}</Text>
       </TouchableOpacity>
+
+      {/* Driver Verification (KYC) */}
+      <Text style={styles.sectionTitle}>Driver Verification</Text>
+      {(() => {
+        const kycStatus = kyc?.status;
+        if (kycStatus === "verified") {
+          return (
+            <View style={[styles.kycCard, styles.kycVerified]}>
+              <Text style={styles.kycIcon}>✅</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.kycTitle}>Verified Driver</Text>
+                <Text style={styles.kycSub}>Your DL and RC are approved</Text>
+              </View>
+            </View>
+          );
+        }
+        if (kycStatus === "submitted") {
+          return (
+            <TouchableOpacity style={[styles.kycCard, styles.kycPending]} onPress={() => router.push("/kyc" as any)}>
+              <Text style={styles.kycIcon}>🕐</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.kycTitle}>Under Review</Text>
+                <Text style={styles.kycSub}>Your documents are being verified</Text>
+              </View>
+              <Text style={styles.kycArrow}>›</Text>
+            </TouchableOpacity>
+          );
+        }
+        if (kycStatus === "rejected") {
+          return (
+            <TouchableOpacity style={[styles.kycCard, styles.kycRejected]} onPress={() => router.push("/kyc" as any)}>
+              <Text style={styles.kycIcon}>❌</Text>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.kycTitle}>Verification Failed</Text>
+                <Text style={styles.kycSub}>Tap to resubmit documents</Text>
+              </View>
+              <Text style={styles.kycArrow}>›</Text>
+            </TouchableOpacity>
+          );
+        }
+        return (
+          <TouchableOpacity style={styles.outlineBtn} onPress={() => router.push("/kyc" as any)}>
+            <Text style={styles.outlineBtnText}>🪪 Complete Driver Verification</Text>
+          </TouchableOpacity>
+        );
+      })()}
 
       {/* Vehicle */}
       <Text style={styles.sectionTitle}>Vehicle</Text>
@@ -203,6 +267,19 @@ const styles = StyleSheet.create({
     padding: 14, alignItems: "center", marginBottom: 8,
   },
   outlineBtnText: { color: Colors.primary, fontWeight: "700", fontSize: 15 },
+  optional: { fontWeight: "400", fontSize: 11, color: Colors.textSecondary },
+  kycCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    borderRadius: 14, padding: 14, borderWidth: 1.5, marginBottom: 8,
+  },
+  kycVerified: { backgroundColor: "#ecfdf5", borderColor: "#6ee7b7" },
+  kycPending:  { backgroundColor: "#fffbeb", borderColor: "#fde68a" },
+  kycRejected: { backgroundColor: "#fef2f2", borderColor: "#fecaca" },
+  kycIcon: { fontSize: 28 },
+  kycTitle: { fontSize: 14, fontWeight: "700", color: Colors.textPrimary },
+  kycSub:  { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
+  kycArrow: { fontSize: 20, color: Colors.textSecondary },
+
   logoutBtn: {
     marginTop: 32, borderWidth: 1, borderColor: Colors.error,
     borderRadius: 12, padding: 14, alignItems: "center",
