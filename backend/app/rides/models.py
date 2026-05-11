@@ -20,6 +20,9 @@ class Ride(db.Model):
     available_seats = db.Column(db.Integer, nullable=False)
     fare = db.Column(db.Float, nullable=False)
     status = db.Column(db.String(20), nullable=False, default="scheduled")
+    driver_lat = db.Column(db.Float)
+    driver_lng = db.Column(db.Float)
+    driver_location_updated_at = db.Column(db.DateTime)
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     bookings = db.relationship("Booking", backref="ride", lazy=True)
@@ -49,6 +52,12 @@ class Ride(db.Model):
             "available_seats": self.available_seats,
             "fare": self.fare,
             "status": self.status,
+            "driver_lat": self.driver_lat,
+            "driver_lng": self.driver_lng,
+            "driver_location_updated_at": (
+                self.driver_location_updated_at.isoformat()
+                if self.driver_location_updated_at else None
+            ),
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if include_driver and self.driver:

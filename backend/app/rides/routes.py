@@ -1,4 +1,5 @@
 import math
+from datetime import datetime, timezone
 from flask import Blueprint, request, jsonify, g
 from app.extensions import db
 from app.rides.models import Ride
@@ -190,6 +191,66 @@ def complete_ride(ride_id):
             {"screen": "/(tabs)/my-rides"},
         )
     return jsonify(ride.to_dict())
+
+
+@rides_bp.route("/<ride_id>/location", methods=["POST"])
+@require_auth
+def update_driver_location(ride_id):
+    """Driver pushes their current GPS coordinates (called every ~5 s)."""
+    data = request.get_json() or {}
+    lat = data.get("lat")
+    lng = data.get("lng")
+    if lat is None or lng is None:
+        return jsonify({"error": "lat and lng are required"}), 400
+
+    ride = db.session.get(Ride, ride_id)
+    if not ride:
+        return jsonify({"error": "Ride not found"}), 404
+    if ride.driver_id != g.user_id:
+        return jsonify({"error": "Not authorized"}), 403
+    if ride.status != "in_progress":
+        return jsonify({"error": "Ride is not in progress"}), 400
+
+    ride.driver_lat = float(lat)
+    ride.driver_lng = float(lng)
+    ride.driver_location_updated_at = datetime.now(timezone.utc)
+    db.session.commit()
+    return jsonify({"message": "Location updated"})
+
+
+@rides_bp.route("/<ride_id>/location", methods=["GET"])
+@require_auth
+def get_driver_location(ride_id):
+    """Riders poll this to get the driver's latest position."""
+    ride = db.session.get(Ride, ride_id)
+    if not ride:
+        return jsonify({"error": "Ride not found"}), 404
+
+    from app.bookings.models import Booking
+    is_rider = Booking.query.filter_by(
+        ride_id=ride_id, rider_id=g.user_id, status="confirmed"
+    ).first() is not None
+    is_driver = ride.driver_id == g.user_id
+
+    if not (is_rider or is_driver):
+        return jsonify({"error": "Not authorized"}), 403
+
+    return jsonify({
+        "ride_id": ride_id,
+        "status": ride.status,
+        "driver_lat": ride.driver_lat,
+        "driver_lng": ride.driver_lng,
+        "driver_location_updated_at": (
+            ride.driver_location_updated_at.isoformat()
+            if ride.driver_location_updated_at else None
+        ),
+        "end_lat": ride.end_lat,
+        "end_lng": ride.end_lng,
+        "end_location": ride.end_location,
+        "start_location": ride.start_location,
+        "start_lat": ride.start_lat,
+        "start_lng": ride.start_lng,
+    })
 
 
 @rides_bp.route("/<ride_id>/cancel", methods=["POST"])

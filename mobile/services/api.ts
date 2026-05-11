@@ -55,6 +55,10 @@ export const completeRide = (id: string) => api.post(`/api/rides/${id}/complete`
 export const cancelRide = (id: string) => api.post(`/api/rides/${id}/cancel`);
 export const getRideBookings = (ride_id: string) => api.get(`/api/rides/${ride_id}/bookings`);
 export const getDriverEarnings = () => api.get("/api/rides/earnings");
+export const updateDriverLocation = (ride_id: string, lat: number, lng: number) =>
+  api.post(`/api/rides/${ride_id}/location`, { lat, lng });
+export const getDriverLocation = (ride_id: string) =>
+  api.get(`/api/rides/${ride_id}/location`);
 
 // ---- Bookings ----
 export const createBooking = (

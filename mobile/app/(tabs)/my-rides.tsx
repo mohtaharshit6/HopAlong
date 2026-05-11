@@ -401,6 +401,15 @@ function BookingRow({
             </View>
           )}
 
+          {ride?.status === "in_progress" && (
+            <TouchableOpacity
+              style={styles.btnTrack}
+              onPress={() => router.push(`/ride/tracking/${ride.id}` as any)}
+            >
+              <Text style={styles.btnText}>📍 Track Ride</Text>
+            </TouchableOpacity>
+          )}
+
           {booking.status === "confirmed" && ride?.status === "scheduled" && (
             <TouchableOpacity
               style={styles.btnRed}
@@ -709,6 +718,7 @@ const styles = StyleSheet.create({
   btnBids: { borderWidth: 1.5, borderColor: Colors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   btnRate: { backgroundColor: Colors.accent, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   btnPayNow: { backgroundColor: "#16a34a", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  btnTrack: { backgroundColor: Colors.primary, borderRadius: 8, paddingHorizontal: 14, paddingVertical: 8 },
   btnDisabled: { opacity: 0.5 },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   btnPrimaryText: { color: Colors.primary, fontWeight: "700", fontSize: 13 },

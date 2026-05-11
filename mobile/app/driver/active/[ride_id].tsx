@@ -1,10 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   View, Text, StyleSheet, FlatList, TouchableOpacity,
   Alert, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { getRide, getRideBookings, verifyPickupOtp, completeRide, cancelRide, confirmManualPayment } from "../../../services/api";
+import * as Location from "expo-location";
+import { getRide, getRideBookings, verifyPickupOtp, completeRide, cancelRide, confirmManualPayment, updateDriverLocation } from "../../../services/api";
 import { Colors } from "../../../constants/colors";
 import { formatPrice } from "../../../utils/currency";
 
@@ -20,6 +21,7 @@ export default function ActiveRideScreen() {
   const [activeBookingId, setActiveBookingId] = useState<string | null>(null);
   const [otpInput, setOtpInput] = useState("");
   const [verifying, setVerifying] = useState(false);
+  const locationSub = useRef<Location.LocationSubscription | null>(null);
 
   const fetchData = async () => {
     try {
@@ -37,6 +39,34 @@ export default function ActiveRideScreen() {
   };
 
   useEffect(() => { fetchData(); }, []);
+
+  // Start GPS broadcasting when ride is in_progress; stop on unmount or completion
+  useEffect(() => {
+    if (ride?.status !== "in_progress") return;
+
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") return;
+
+      locationSub.current = await Location.watchPositionAsync(
+        {
+          accuracy: Location.Accuracy.Balanced,
+          timeInterval: 5000,
+          distanceInterval: 10,
+        },
+        async (loc) => {
+          try {
+            await updateDriverLocation(ride_id, loc.coords.latitude, loc.coords.longitude);
+          } catch {}
+        }
+      );
+    })();
+
+    return () => {
+      locationSub.current?.remove();
+      locationSub.current = null;
+    };
+  }, [ride?.status]);
 
   const openOtpModal = (bookingId: string) => {
     setActiveBookingId(bookingId);
@@ -133,6 +163,14 @@ export default function ActiveRideScreen() {
             <Text style={styles.rideMeta}>{ride.time}</Text>
             <Text style={[styles.rideMeta, { color: Colors.primary, fontWeight: "700" }]}>{formatPrice(ride.fare)}/seat</Text>
           </View>
+        </View>
+      )}
+
+      {/* Live GPS indicator */}
+      {ride?.status === "in_progress" && (
+        <View style={styles.gpsBanner}>
+          <View style={styles.gpsDot} />
+          <Text style={styles.gpsText}>Broadcasting live location to riders</Text>
         </View>
       )}
 
@@ -366,4 +404,15 @@ const styles = StyleSheet.create({
     paddingHorizontal: 10, paddingVertical: 5,
   },
   payConfirmedText: { color: "#059669", fontSize: 11, fontWeight: "700" },
+
+  gpsBanner: {
+    flexDirection: "row", alignItems: "center", gap: 8,
+    backgroundColor: "#ecfdf5", marginHorizontal: 16, marginBottom: 8,
+    borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8,
+    borderWidth: 1, borderColor: "#6ee7b7",
+  },
+  gpsDot: {
+    width: 8, height: 8, borderRadius: 4, backgroundColor: "#10b981",
+  },
+  gpsText: { fontSize: 12, color: "#065f46", fontWeight: "600" },
 });
