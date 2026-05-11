@@ -71,7 +71,7 @@ export default function RideDetailScreen() {
 
       if (payMethod === "upi") {
         const driverVpa = ride.driver?.upi_vpa;
-        const fare = Math.round((ride.agreed_fare ?? ride.fare) * 1);
+        const fare = Math.round(ride.agreed_fare ?? ride.fare);
         const note = encodeURIComponent("HopAlong Ride");
         const driverName = encodeURIComponent(ride.driver?.name || "Driver");
 
@@ -80,17 +80,25 @@ export default function RideDetailScreen() {
           const supported = await Linking.canOpenURL(upiUrl);
           if (supported) {
             await Linking.openURL(upiUrl);
+            Alert.alert(
+              "UPI Payment Sent?",
+              "Driver will confirm receipt. Check My Rides for status.",
+              [{ text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") }]
+            );
           } else {
-            Alert.alert("No UPI App Found", `Please pay ₹${fare} to ${driverVpa} manually.`);
+            Alert.alert(
+              "No UPI App Found",
+              `Pay ₹${fare} to ${driverVpa} manually, then check My Rides.`,
+              [{ text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") }]
+            );
           }
         } else {
-          Alert.alert("UPI Booking Confirmed", "Driver has not set a UPI ID. Coordinate payment directly.");
+          Alert.alert(
+            "UPI Booking Confirmed",
+            "Driver hasn't set a UPI ID — coordinate payment directly at pickup.",
+            [{ text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") }]
+          );
         }
-        Alert.alert(
-          "UPI Payment",
-          "Driver will confirm receipt at pickup. Check My Rides for status.",
-          [{ text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") }]
-        );
         return;
       }
 

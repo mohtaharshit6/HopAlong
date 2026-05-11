@@ -29,8 +29,9 @@ def send_push(token: str, title: str, body: str, data: dict = None) -> bool:
 def notify_user(user_id: str, title: str, body: str, data: dict = None) -> None:
     """Look up a user's push token and send a notification. Never raises."""
     try:
+        from app.extensions import db
         from app.users.models import User
-        user = User.query.get(user_id)
+        user = db.session.get(User, user_id)
         if user and user.push_token:
             send_push(user.push_token, title, body, data)
     except Exception as exc:

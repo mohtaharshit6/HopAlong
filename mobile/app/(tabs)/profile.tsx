@@ -12,7 +12,7 @@ export default function ProfileScreen() {
   const { user, setAuth, updateUser, clearAuth, token } = useAuthStore();
   const router = useRouter();
   const [name, setName] = useState(user?.name || "");
-  const [upiVpa, setUpiVpa] = useState((user as any)?.upi_vpa || "");
+  const [upiVpa, setUpiVpa] = useState(user?.upi_vpa || "");
   const [saving, setSaving] = useState(false);
   const [kyc, setKyc] = useState<any>(null);
   const [showVehicleForm, setShowVehicleForm] = useState(false);

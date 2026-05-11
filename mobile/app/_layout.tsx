@@ -8,7 +8,6 @@ export default function RootLayout() {
   const { token, onboardingDone, hydrated, loadStoredAuth } = useAuthStore();
   const segments = useSegments();
   const router = useRouter();
-  const notificationListener = useRef<Notifications.EventSubscription>();
   const responseListener = useRef<Notifications.EventSubscription>();
 
   useEffect(() => {
@@ -42,9 +41,13 @@ export default function RootLayout() {
 
     const inTabs = segments[0] === "(tabs)";
     const inOnboarding = segments[0] === "onboarding";
+    // Allow (auth) screens to finish their own navigation (profile-setup, user-type)
+    // before the guard can redirect. Without this, setting token during OTP verify
+    // triggers the guard and races against router.replace("/(auth)/profile-setup").
+    const inAuth = segments[0] === "(auth)";
 
     if (token) {
-      if (!inTabs) router.replace("/(tabs)");
+      if (!inTabs && !inAuth) router.replace("/(tabs)");
       return;
     }
 

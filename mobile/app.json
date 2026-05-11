@@ -50,6 +50,13 @@
           "sounds": []
         }
       ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "HopAlong needs photo access to upload documents and profile pictures.",
+          "cameraPermission": "HopAlong needs camera access to capture documents."
+        }
+      ],
       "expo-asset",
       "expo-font"
     ]

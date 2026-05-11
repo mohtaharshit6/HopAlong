@@ -587,8 +587,6 @@ export default function MyRidesScreen() {
     ...inactiveBids.map((b) => ({ type: "bid" as const, item: b })),
   ];
 
-  const totalPending = pendingRatingIds.size + Object.values(driverPendingByRide).flat().length;
-
   return (
     <View style={styles.container}>
       <View style={styles.tabBar}>

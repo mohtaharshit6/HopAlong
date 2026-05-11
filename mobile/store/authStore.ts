@@ -14,6 +14,7 @@ export interface User {
   role: "rider" | "driver" | "both" | null;
   is_verified: boolean;
   profile_picture: string | null;
+  upi_vpa: string | null;
   pending_rating_count?: number;
 }
 
