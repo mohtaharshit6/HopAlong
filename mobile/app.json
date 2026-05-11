@@ -1,0 +1,49 @@
+{
+  "expo": {
+    "name": "HopAlong",
+    "slug": "hopalong",
+    "version": "1.0.0",
+    "sdkVersion": "54.0.0",
+    "runtimeVersion": {
+      "policy": "sdkVersion"
+    },
+    "orientation": "portrait",
+    "icon": "./assets/logo.png",
+    "scheme": "hopalong",
+    "userInterfaceStyle": "light",
+    "splash": {
+      "image": "./assets/logo.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#1e6273"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/logo.png",
+        "backgroundColor": "#1e6273"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyA1x9uHhx-ka4qfLfkttn_I-lQy30aYObk"
+        }
+      },
+      "package": "com.hopalong.app"
+    },
+    "ios": {
+      "bundleIdentifier": "com.hopalong.app",
+      "config": {
+        "googleMapsApiKey": "AIzaSyA1x9uHhx-ka4qfLfkttn_I-lQy30aYObk"
+      }
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-location",
+        {
+          "locationAlwaysAndWhenInUsePermission": "HopAlong needs location to find nearby rides."
+        }
+      ],
+      "expo-asset",
+      "expo-font"
+    ]
+  }
+}

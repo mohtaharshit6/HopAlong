@@ -1,1 +1,40 @@
 HopAlong/
+
+# ── Node / Expo ──────────────────────────────────────────
+node_modules/
+mobile/node_modules/
+mobile/.expo/
+mobile/dist/
+mobile/web-build/
+mobile/.env
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ── Python / Flask ───────────────────────────────────────
+__pycache__/
+**/__pycache__/
+**/*.pyc
+**/*.pyo
+backend/venv/
+backend/.venv/
+backend/instance/
+backend/.env
+*.egg-info/
+
+# ── Environment / secrets ────────────────────────────────
+.env
+.env.local
+.env.*.local
+
+# ── OS artifacts ─────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# ── Claude Code internal ─────────────────────────────────
+.claude/
+
+# ── Misc ─────────────────────────────────────────────────
+*.log
+*.tmp

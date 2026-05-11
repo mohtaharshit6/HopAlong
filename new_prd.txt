@@ -1,0 +1,630 @@
+# HopAlong - Complete Technical Specification
+
+## 1. AUTHENTICATION & PROFILE FLOW
+
+### 1.1 Initial App Launch
+**Screen: Splash Screen**
+- Duration: 2-3 seconds
+- Background tasks:
+  - Check device connectivity
+  - Initialize Firebase SDK
+  - Check stored auth tokens in SharedPreferences/Keychain
+  - If valid token exists → redirect to Home Screen
+  - If no token → redirect to Onboarding
+
+**Screen: Onboarding Carousel**
+- 3 slides with skip button
+- Slide 1: "Ride at Your Price" (inDrive feature highlight)
+- Slide 2: "Safe & Verified Drivers" 
+- Slide 3: "Multiple Payment Options"
+- CTA Button: "Get Started" → Authentication Screen
+
+### 1.2 Registration/Login Flow
+
+**Screen: Auth Landing**
+- Logo at top
+- Phone number input field with country code picker
+- "Continue" button (disabled until 10 digits entered)
+- "Or continue with" section:
+  - Google button → triggers Google OAuth 2.0
+  - Truecaller button → triggers Truecaller SDK
+
+**Phone Number Flow:**
+1. User enters number → "Continue" clicked
+2. Backend API call: `POST /api/v1/auth/send-otp`
+   - Integrates: Twilio/MSG91 SMS Gateway
+   - Response: `{otpId: "xyz123", expiresIn: 120}`
+3. Navigate to OTP Screen
+
+**Screen: OTP Verification**
+- 6-digit OTP input boxes (auto-focus next box)
+- "Resend OTP" button (disabled for 30s)
+- Auto-verify on 6th digit entry
+- Backend: `POST /api/v1/auth/verify-otp`
+  - Request: `{phone: "+911234567890", otp: "123456", otpId: "xyz123"}`
+  - Response: `{token: "jwt_token", isNewUser: true/false, userId: "usr_123"}`
+
+**Google OAuth Flow:**
+1. Trigger: `GoogleSignIn.getClient().signIn()`
+2. Get ID token from Google
+3. Backend: `POST /api/v1/auth/google`
+4. Store JWT token in secure storage
+
+**Truecaller Integration:**
+1. Initialize: `TruecallerSDK.init()`
+2. Check if Truecaller installed
+3. Get verified phone number
+4. Backend: `POST /api/v1/auth/truecaller`
+
+### 1.3 Profile Setup (New Users)
+
+**Screen: Basic Info**
+- Full Name input (auto-filled if Google/Truecaller)
+- Email input (optional)
+- Profile photo (camera/gallery picker)
+- "Next" button
+- Backend: `POST /api/v1/users/profile`
+
+**Screen: User Type Selection**
+- Two cards: "I want to ride" / "I want to drive"
+- Can select both (driver can also book rides)
+- Selecting "drive" triggers KYC flow
+
+### 1.4 Driver KYC Flow
+
+**Screen: Driver Agreement**
+- Terms scrollview (must scroll to bottom)
+- Checkbox: "I agree to terms"
+- "Proceed" button
+
+**Screen: Document Upload Hub**
+- List items:
+  1. Aadhaar Card ✓/✗
+  2. PAN Card ✓/✗
+  3. Driving License ✓/✗
+  4. Vehicle RC ✓/✗
+  5. Vehicle Insurance ✓/✗
+  6. Vehicle Photos ✓/✗
+
+**Screen: Aadhaar Upload**
+- "Upload Front Side" button → Camera/Gallery
+- Image preview with crop functionality
+- "Upload Back Side" button
+- OCR Integration: Google ML Kit Text Recognition
+- Auto-extracts: Name, Aadhaar number, DOB
+- Editable fields for corrections
+- "Verify Aadhaar" → DigiLocker API integration
+- Backend: `POST /api/v1/driver/documents/aadhaar`
+
+**Screen: Driving License Upload**
+- Similar flow with OCR
+- Extracts: License number, validity, vehicle classes
+- Verification via Vahan API
+
+**Screen: Vehicle Details**
+- Vehicle type dropdown (Bike/Auto/Mini/Sedan)
+- Registration number input (format validation)
+- Model/Make dropdowns
+- Year of manufacture
+- Color picker
+- Fuel type (Petrol/Diesel/CNG/Electric)
+
+**Screen: Vehicle Photos**
+- Required angles:
+  1. Front view
+  2. Back view
+  3. Side view (both)
+  4. Interior
+  5. Number plate close-up
+- Each photo → compression to max 2MB
+- Backend: Upload to S3/CloudStorage
+
+**Screen: Bank Details**
+- Account holder name
+- Account number (with re-entry)
+- IFSC code (auto-fetch bank name)
+- UPI ID (optional)
+- Penny drop verification via Razorpay Route
+
+**Screen: KYC Review**
+- Status: "Under Review" (24-48 hours)
+- Admin panel integration for manual verification
+- Push notification on approval/rejection
+
+### 1.5 Session Management
+
+**Token Storage:**
+- JWT stored in:
+  - Android: EncryptedSharedPreferences
+  - iOS: Keychain
+- Refresh token mechanism (30-day validity)
+- Access token (1-day validity)
+
+**Logout Flow:**
+1. Settings → "Logout" button
+2. Confirmation dialog: "Are you sure?"
+3. On confirm:
+   - Clear local storage
+   - Backend: `POST /api/v1/auth/logout`
+   - Revoke FCM token
+   - Navigate to Auth Landing
+
+## 2. HOME SCREEN & RIDE BOOKING FLOW
+
+### 2.1 Home Screen Layout
+
+**Screen Components:**
+- Map View (Google Maps SDK)
+- Bottom sheet (3 states: collapsed/half/full)
+- Location permission prompt (if not granted)
+
+**Map Integration:**
+```javascript
+// Initialize map
+GoogleMap.init({
+  apiKey: "YOUR_API_KEY",
+  center: userLocation || defaultCity,
+  zoom: 15
+})
+
+// Enable components
+map.setMyLocationEnabled(true)
+map.setTrafficEnabled(true)
+```
+
+**Bottom Sheet - Collapsed State:**
+- Search bar: "Where to?"
+- Recent rides (horizontal scroll)
+- Saved places icons (Home/Work/+Add)
+
+### 2.2 Destination Selection
+
+**Click "Where to?" → Screen: Search Destination**
+
+**Components:**
+- Current location (auto-detected)
+- Destination search bar (auto-focused)
+- "Set location on map" option
+- Recent searches list
+- Saved places section
+
+**Places Autocomplete Integration:**
+```javascript
+// Initialize Places API
+const autocomplete = new google.maps.places.Autocomplete(input, {
+  types: ['geocode', 'establishment'],
+  componentRestrictions: {country: 'in'},
+  fields: ['place_id', 'geometry', 'name', 'formatted_address']
+})
+
+// On selection
+autocomplete.addListener('place_changed', () => {
+  const place = autocomplete.getPlace()
+  // Store: place_id, lat/lng, address
+})
+```
+
+**Set Location on Map Flow:**
+1. Map goes full screen
+2. Pin in center (floating)
+3. Map drag → pin stays centered
+4. Address bar shows reverse geocoded address
+5. "Confirm Location" button
+6. Reverse Geocoding API: `GET https://maps.googleapis.com/maps/api/geocode/json?latlng={lat},{lng}`
+
+### 2.3 Ride Options & Fare Estimation
+
+**Screen: Ride Options**
+
+**Top Section:** Route preview on map with markers
+
+**Ride Categories Carousel:**
+```
+[Bike] [Auto] [Mini] [Sedan] [Premium]
+₹35-40  ₹55-65  ₹75-85  ₹95-105  ₹125-140
+2 min   4 min   3 min    5 min    8 min
+```
+
+**Fare Calculation:**
+1. Distance Matrix API call:
+```javascript
+POST https://maps.googleapis.com/maps/api/distancematrix/json
+{
+  origins: [{lat: 12.9716, lng: 77.5946}],
+  destinations: [{lat: 12.2958, lng: 76.6394}],
+  mode: "driving",
+  traffic_model: "best_guess",
+  departure_time: "now"
+}
+```
+
+2. Backend calculation:
+```
+Base Fare = ₹30 (Mini)
+Per KM = ₹12
+Per Min = ₹1.5
+Total = Base + (Distance * PerKM) + (Duration * PerMin)
+Surge Multiplier = 1.2x (if applicable)
+```
+
+**Bottom Section Options:**
+- Payment method selector (Cash/UPI/Wallet)
+- Promo code input
+- "Book Mini" / "Suggest your fare" toggle
+
+### 2.4 Bidding Mechanism (inDrive Style)
+
+**If "Suggest your fare" selected:**
+
+**Screen: Fare Negotiation**
+- Suggested fare range: ₹75-85
+- Slider to adjust: ₹60 --- [₹80] --- ₹100
+- Number pad for direct input
+- "Why this price?" optional text input
+- "Find Drivers" button
+
+**Backend Flow:**
+```javascript
+POST /api/v1/rides/create-bid
+{
+  pickup: {lat, lng, address},
+  destination: {lat, lng, address},
+  suggestedFare: 80,
+  rideType: "MINI",
+  paymentMethod: "CASH",
+  note: "Regular customer, short distance"
+}
+```
+
+**Driver Matching:**
+1. Create geohash for pickup location
+2. Query nearby active drivers (5km radius)
+3. Send FCM push to eligible drivers
+4. Collect responses for 45 seconds
+
+**Screen: Driver Offers**
+- Timer: "Finding drivers... 0:38"
+- List of responding drivers:
+```
+[Driver Avatar] Rajesh K. ★4.8
+Maruti Swift - KA01AB1234
+Offered: ₹85 | 3 min away
+[Accept] [Counter: ₹75]
+```
+
+**Counter Offer Flow:**
+- Rider counters → driver gets notification
+- Maximum 2 counter rounds
+- Either party can accept anytime
+
+### 2.5 Standard Booking Flow (Uber-style)
+
+**After "Book Mini" clicked:**
+
+**Screen: Finding Driver**
+- Animated ripple effect on map
+- "Finding nearby drivers..."
+- Cancel button
+- Backend: Assigns to nearest available driver
+
+**Driver Assignment Logic:**
+1. Get drivers within 3km (expand to 5km if needed)
+2. Sort by: rating > 4.0, acceptance rate > 80%, distance
+3. Send to driver #1, wait 15 seconds
+4. If rejected/timeout → next driver
+5. After 5 rejections → "No drivers available"
+
+## 3. RIDE MATCHING & EXECUTION (Driver Side)
+
+### 3.1 Driver Home Screen
+
+**Screen: Driver Dashboard**
+- Toggle: Online/Offline (prominent)
+- Today's earnings card
+- Accept rate: 85%
+- Map showing current location
+- Heat map overlay (demand indicators)
+
+**Going Online:**
+1. Toggle switch → "Online"
+2. Location permission check
+3. Battery optimization warning (if < 20%)
+4. Start location updates (every 5 seconds)
+5. WebSocket connection: `ws://api.hopalong.com/driver/live`
+
+### 3.2 Receiving Ride Requests
+
+**Standard Request Popup:**
+- Slides up from bottom
+- 15-second timer (circular progress)
+- Pickup address
+- Distance to pickup: "0.8 km (3 min)"
+- Estimated trip: "5.2 km | ₹95"
+- [Decline] [Accept] buttons
+- Auto-decline after timeout
+
+**Bid Request Popup:**
+- Similar layout plus:
+- "Rider offers: ₹80"
+- "Suggested: ₹95"
+- [Decline] [Counter] [Accept] buttons
+
+**Accept Action:**
+```javascript
+POST /api/v1/driver/rides/accept
+{
+  rideId: "ride_123",
+  driverLocation: {lat, lng},
+  estimatedArrival: 180 // seconds
+}
+```
+
+### 3.3 Navigation to Pickup
+
+**Screen: Navigating to Rider**
+- Full-screen map
+- Turn-by-turn navigation (Google Directions API)
+- Bottom card:
+  - Rider name: "Picking up Harshit"
+  - Distance remaining: "0.5 km"
+  - ETA: "2 min"
+  - [Call] [Message] [Cancel] buttons
+
+**Directions API Integration:**
+```javascript
+GET https://maps.googleapis.com/maps/api/directions/json
+{
+  origin: "12.9716,77.5946",
+  destination: "12.9141,77.6233",
+  mode: "driving",
+  alternatives: false,
+  traffic_model: "best_guess",
+  departure_time: "now"
+}
+```
+
+**Real-time Updates:**
+- Location sent every 3 seconds via WebSocket
+- Polyline updates on route deviation
+- "Rerouting..." if off course
+
+### 3.4 Pickup Flow
+
+**Arriving at Pickup:**
+- When within 50m → Auto-trigger "Arrived" status
+- Push notification to rider
+- Start 5-minute waiting timer
+
+**Screen: Waiting for Rider**
+- "Waiting... 2:34"
+- Rider details card
+- [Call] [I've Arrived] buttons
+- After 3 min → [Cancel - Rider No Show] appears
+
+**OTP Verification:**
+- Rider shares 4-digit OTP
+- Driver enters in num pad
+- Backend verification: `POST /api/v1/rides/verify-otp`
+- On success → "Start Ride" button enables
+
+### 3.5 During Ride
+
+**Screen: Trip in Progress**
+- Navigation to destination
+- Trip stats overlay:
+  - Distance: 2.3 km
+  - Duration: 8:23
+  - Current fare: ₹45
+- [Emergency] button (bottom corner)
+- Swipe up for rider details
+
+**Background Processes:**
+- Location tracking every 3 seconds
+- Store breadcrumbs for route verification
+- Calculate live fare
+- Speed monitoring (for safety)
+
+### 3.6 Ride Completion
+
+**Approaching Destination:**
+- When within 100m → "Approaching destination"
+- Navigation ends at coordinate
+- "Complete Ride" button appears
+
+**Screen: Ride Summary**
+- Route map
+- Total distance: 5.2 km
+- Duration: 18 min
+- Base fare: ₹30
+- Distance charges: ₹62.40
+- Time charges: ₹18
+- **Total: ₹110.40**
+- [Collect Cash] / [Payment Received] based on method
+
+## 4. PAYMENT & RATING FLOW
+
+### 4.1 Payment Processing
+
+**Cash Payment:**
+1. Driver marks "Cash Collected"
+2. If exact amount → proceed to rating
+3. If change needed:
+   - Enter amount received: ₹150
+   - Show change due: ₹40
+   - "Change Given" confirmation
+
+**UPI Payment Flow:**
+1. Generate UPI intent:
+```javascript
+upi://pay?pa=hopalong@paytm&pn=HopAlong&am=110.40&cu=INR&tn=Ride-RIDEID123
+```
+2. Launch UPI app chooser
+3. Payment gateway webhook listener
+4. On success → auto-proceed to rating
+
+**Wallet Payment:**
+- Check wallet balance
+- If insufficient → "Add Money" flow
+- Deduct → Update balance
+- Show transaction ID
+
+### 4.2 Rating System
+
+**Screen: Rate Your Ride**
+- 5-star selector (default 5 stars)
+- Quick feedback chips:
+  - "Smooth ride"
+  - "Clean car"
+  - "Polite driver"
+  - "Safe driving"
+- Tip options: [₹10] [₹20] [₹30] [Custom]
+- Comment box (optional)
+- "Submit" button
+
+**Driver Rating Screen:**
+- Similar layout for driver to rate rider
+- Quick feedback:
+  - "On time"
+  - "Polite"
+  - "Correct pickup location"
+
+### 4.3 Split Fare Feature
+
+**Initiated by Rider:**
+1. During/after ride → "Split Fare" button
+2. Screen: Add friends
+   - Contact picker
+   - Or manual phone entry
+3. Select split type:
+   - Equal split
+   - Custom amounts
+4. Send SMS/WhatsApp invite
+5. Friends get payment link
+6. Track who paid
+
+## 5. EDGE CASES & ERROR HANDLING
+
+### 5.1 Mid-Ride Cancellations
+
+**Driver Cancels:**
+1. Confirmation: "Are you sure? This affects your rating"
+2. Reason selection mandatory:
+   - Vehicle breakdown
+   - Medical emergency
+   - Rider misbehavior
+   - Other (text input)
+3. If after ride start → partial payment calculation
+4. Rider gets push notification
+5. Priority re-assignment to new driver
+6. Compensation logic: Free ride if >2 cancellations
+
+**Rider Cancels:**
+- Within 2 min of booking → No charge
+- After driver accepts → ₹25 cancellation fee
+- After driver arrives → ₹50 fee
+- During ride → Full fare until that point
+
+### 5.2 GPS/Connectivity Issues
+
+**GPS Signal Lost:**
+1. Show banner: "GPS signal weak"
+2. Cache last 10 known positions
+3. Use cell tower triangulation fallback
+4. Disable fare meter increment
+5. Log incident for dispute resolution
+6. Manual address entry option for driver
+
+**Internet Connectivity Lost:**
+1. Queue all API calls locally
+2. Continue ride with offline map tiles
+3. Store ride data in SQLite
+4. On reconnection → sync queue
+5. Show "Offline mode" indicator
+6. Disable new ride requests
+
+### 5.3 Payment Failures
+
+**UPI Failure:**
+1. Retry with different app
+2. After 3 failures → Switch to cash
+3. Generate payment link for later
+4. 24-hour payment reminder
+5. Soft-block account after 48 hours
+
+**Insufficient Wallet Balance:**
+- Show deficit amount
+- Quick add money: [₹50] [₹100] [Exact]
+- Alternative payment method prompt
+- Allow partial wallet payment
+
+**Payment Disputes:**
+1. In-app dispute form
+2. Attach ride details auto-filled
+3. Upload screenshots
+4. 24-hour resolution SLA
+5. Temporary credit if driver fault
+
+### 5.4 Safety Features
+
+**SOS Button:**
+1. Hold for 3 seconds to activate
+2. Auto-share live location with emergency contacts
+3. Start audio recording
+4. Alert nearby police via API
+5. Priority customer support call
+
+**Route Deviation:**
+- If >500m off route → Alert both parties
+- Rider gets notification
+- Option to report or confirm alternate route
+- Log for safety review
+
+**Speed Monitoring:**
+- Alert if speed >80kmph for >10 seconds
+- Auto-report to safety team
+- Three strikes → driver warning
+
+### 5.5 Additional Technical Specifications
+
+**Background Services:**
+- JobScheduler (Android) / BGTaskScheduler (iOS)
+- Periodic location sync every 30s when app killed
+- FCM/APNs for push notifications
+- WebSocket for real-time updates
+
+**Offline Capabilities:**
+- Cache 50MB of map tiles
+- Store last 10 rides locally
+- Offline receipt generation
+- Queue analytics events
+
+**Third-Party Services Summary:**
+1. **Google Maps Platform:**
+   - Maps SDK
+   - Places API
+   - Directions API
+   - Distance Matrix API
+   - Geocoding API
+   - Roads API (for snapping)
+
+2. **Payment Gateways:**
+   - Razorpay (UPI, Cards, Wallets)
+   - Paytm Integration
+   - PayU for international cards
+
+3. **Communication:**
+   - Twilio (SMS/Calls)
+   - SendGrid (Email)
+   - FCM/APNs (Push)
+
+4. **Analytics & Monitoring:**
+   - Firebase Analytics
+   - Crashlytics
+   - Sentry for error tracking
+   - MixPanel for user behavior
+
+5. **Identity Verification:**
+   - DigiLocker API
+   - Vahan API (vehicle verification)
+   - Aadhaar API (through DigiLocker)
+   - Truecaller SDK
