@@ -3,6 +3,7 @@ from flask import Blueprint, request, jsonify, g
 from app.extensions import db
 from app.rides.models import Ride
 from app.auth.middleware import require_auth
+from app.push import notify_user
 
 rides_bp = Blueprint("rides", __name__)
 
@@ -145,6 +146,15 @@ def start_ride(ride_id):
 
     ride.status = "in_progress"
     db.session.commit()
+
+    from app.bookings.models import Booking
+    for booking in Booking.query.filter_by(ride_id=ride_id, status="confirmed").all():
+        notify_user(
+            booking.rider_id,
+            "Your Ride Has Started",
+            f"Driver is on the way to {ride.start_location}. Get ready!",
+            {"screen": "/(tabs)/my-rides"},
+        )
     return jsonify(ride.to_dict())
 
 
@@ -171,6 +181,14 @@ def complete_ride(ride_id):
             booking.payment_status = "released"
 
     db.session.commit()
+
+    for booking in confirmed_bookings:
+        notify_user(
+            booking.rider_id,
+            "Ride Completed",
+            f"You've arrived at {ride.end_location}. Rate your driver!",
+            {"screen": "/(tabs)/my-rides"},
+        )
     return jsonify(ride.to_dict())
 
 
@@ -199,4 +217,12 @@ def cancel_ride(ride_id):
 
     ride.available_seats = ride.total_seats
     db.session.commit()
+
+    for booking in confirmed_bookings:
+        notify_user(
+            booking.rider_id,
+            "Ride Cancelled",
+            f"Your ride from {ride.start_location} was cancelled by the driver.",
+            {"screen": "/(tabs)/my-rides"},
+        )
     return jsonify(ride.to_dict())

@@ -100,6 +100,9 @@ export const submitRating = (booking_id: string, rated_user_id: string, score: n
 export const getPendingRatings = () => api.get("/api/ratings/pending");
 
 // ---- Users ----
+export const registerPushToken = (push_token: string) =>
+  api.put("/api/users/me/push-token", { push_token });
+
 export const getMe = () => api.get("/api/auth/me");
 export const updateMe = (data: { name?: string; phone?: string }) => api.put("/api/users/me", data);
 export const getUser = (id: string) => api.get(`/api/users/${id}`);

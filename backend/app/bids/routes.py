@@ -6,6 +6,7 @@ from app.bids.models import Bid
 from app.rides.models import Ride
 from app.bookings.models import Booking
 from app.auth.middleware import require_auth
+from app.push import notify_user
 
 bids_bp = Blueprint("bids", __name__)
 
@@ -59,6 +60,13 @@ def create_bid():
     )
     db.session.add(bid)
     db.session.commit()
+
+    notify_user(
+        ride.driver_id,
+        "New Bid Received",
+        f"Someone offered ₹{int(offered_fare)} for your ride to {ride.end_location}",
+        {"screen": f"/driver/bids/{ride_id}"},
+    )
     return jsonify(bid.to_dict(include_ride=True)), 201
 
 
@@ -124,6 +132,12 @@ def accept_bid(bid_id):
     bid.booking_id = booking.id
     db.session.commit()
 
+    notify_user(
+        bid.rider_id,
+        "Bid Accepted!",
+        f"Your offer of ₹{int(bid.offered_fare)} was accepted. Check My Rides to pay.",
+        {"screen": "/(tabs)/my-rides"},
+    )
     return jsonify({"bid": bid.to_dict(), "booking": booking.to_dict(show_otp=True)})
 
 
@@ -142,6 +156,13 @@ def reject_bid(bid_id):
 
     bid.status = "rejected"
     db.session.commit()
+
+    notify_user(
+        bid.rider_id,
+        "Bid Declined",
+        f"Your offer of ₹{int(bid.offered_fare)} was not accepted. Try another ride.",
+        {"screen": "/(tabs)/my-rides"},
+    )
     return jsonify(bid.to_dict())
 
 
@@ -174,6 +195,13 @@ def counter_bid(bid_id):
     bid.counter_fare = counter_fare
     bid.status = "countered"
     db.session.commit()
+
+    notify_user(
+        bid.rider_id,
+        "Driver Countered Your Bid",
+        f"Driver offered ₹{int(counter_fare)} for your requested ride. Accept or reject in My Rides.",
+        {"screen": "/(tabs)/my-rides"},
+    )
     return jsonify(bid.to_dict())
 
 
@@ -208,6 +236,12 @@ def accept_counter(bid_id):
     bid.booking_id = booking.id
     db.session.commit()
 
+    notify_user(
+        ride.driver_id,
+        "Counter Offer Accepted",
+        f"Rider accepted your counter offer of ₹{int(bid.counter_fare)}.",
+        {"screen": f"/driver/bids/{bid.ride_id}"},
+    )
     return jsonify({"bid": bid.to_dict(), "booking": booking.to_dict(show_otp=True)})
 
 
@@ -222,6 +256,14 @@ def reject_counter(bid_id):
     if bid.status != "countered":
         return jsonify({"error": "No counter offer to reject"}), 400
 
+    ride = db.session.get(Ride, bid.ride_id)
     bid.status = "counter_rejected"
     db.session.commit()
+
+    notify_user(
+        ride.driver_id if ride else bid.ride_id,
+        "Counter Offer Rejected",
+        f"Rider declined your counter offer of ₹{int(bid.counter_fare)}.",
+        {"screen": f"/driver/bids/{bid.ride_id}"},
+    )
     return jsonify(bid.to_dict())

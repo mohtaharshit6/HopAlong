@@ -21,6 +21,7 @@ class User(db.Model):
     total_ratings = db.Column(db.Integer, default=0)
     is_verified = db.Column(db.Boolean, default=False)
     profile_picture = db.Column(db.Text)
+    push_token = db.Column(db.String(200))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     rides_offered = db.relationship("Ride", backref="driver", lazy=True, foreign_keys="Ride.driver_id")

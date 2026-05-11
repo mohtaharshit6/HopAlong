@@ -42,6 +42,23 @@ def get_user(user_id):
     return jsonify(data)
 
 
+@users_bp.route("/me/push-token", methods=["PUT"])
+@require_auth
+def register_push_token():
+    data = request.get_json() or {}
+    token = (data.get("push_token") or "").strip()
+    if not token:
+        return jsonify({"error": "push_token is required"}), 400
+
+    user = db.session.get(User, g.user_id)
+    if not user:
+        return jsonify({"error": "User not found"}), 404
+
+    user.push_token = token
+    db.session.commit()
+    return jsonify({"message": "Push token registered"})
+
+
 @users_bp.route("/me/vehicles", methods=["POST"])
 @require_auth
 def add_vehicle():

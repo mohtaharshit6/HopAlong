@@ -42,6 +42,14 @@
           "locationAlwaysAndWhenInUsePermission": "HopAlong needs location to find nearby rides."
         }
       ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/logo.png",
+          "color": "#1e6273",
+          "sounds": []
+        }
+      ],
       "expo-asset",
       "expo-font"
     ]
