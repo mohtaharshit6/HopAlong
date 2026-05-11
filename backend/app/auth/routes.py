@@ -5,6 +5,7 @@ from flask import Blueprint, request, jsonify, g
 from app.extensions import db
 from app.users.models import User
 from app.auth.middleware import require_auth
+from app.sms import send_sms
 
 
 def _make_token(user_id: str) -> str:
@@ -36,8 +37,10 @@ def send_otp():
     otp = user.generate_otp()
     db.session.commit()
 
-    # DEV: print to console. Swap this line with Twilio when ready.
-    print(f"\n[DEV OTP] Phone: {phone}  OTP: {otp}\n", flush=True)
+    # Format phone to E.164 — prefix +91 for Indian numbers if no country code given
+    e164 = phone if phone.startswith("+") else f"+91{phone}"
+    message = f"Your HopAlong OTP is {otp}. Valid for 5 minutes. Do not share it with anyone."
+    send_sms(e164, message)
 
     return jsonify({"message": "OTP sent", "expiresIn": 300})
 
