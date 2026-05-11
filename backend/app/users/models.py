@@ -22,6 +22,7 @@ class User(db.Model):
     is_verified = db.Column(db.Boolean, default=False)
     profile_picture = db.Column(db.Text)
     push_token = db.Column(db.String(200))
+    upi_vpa = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     rides_offered = db.relationship("Ride", backref="driver", lazy=True, foreign_keys="Ride.driver_id")
@@ -60,6 +61,7 @@ class User(db.Model):
             "is_verified": self.is_verified,
             "profile_picture": self.profile_picture,
             "role": self.role,
+            "upi_vpa": self.upi_vpa,
         }
         if not public:
             data.update({

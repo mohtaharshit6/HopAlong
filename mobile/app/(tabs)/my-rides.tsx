@@ -9,8 +9,9 @@ import {
   getMyRides, getMyBookings, getPendingRatings,
   getDriverEarnings, getMyBids, acceptCounter, rejectCounter,
   startRide, completeRide, cancelRide, cancelBooking,
-  createPaymentOrder, getPaymentStatus,
+  createPaymentOrder, getPaymentStatus, confirmManualPayment,
 } from "../../services/api";
+import { Linking } from "react-native";
 import { useAuthStore } from "../../store/authStore";
 import { Colors } from "../../constants/colors";
 import { formatPrice } from "../../utils/currency";
@@ -236,12 +237,29 @@ function BookingRow({
     ride?.status === "completed" &&
     pendingRatingIds.has(booking.id);
 
-  // 1b: show Pay Now when booking is confirmed but payment hasn't been captured
+  // Show Pay Now only for online payments still pending
   const needsPayment =
     booking.status === "confirmed" &&
     booking.payment_status === "pending" &&
+    booking.payment_method !== "cash" &&
+    booking.payment_method !== "upi" &&
     ride?.status !== "completed" &&
     ride?.status !== "cancelled";
+
+  const isUpiPending = booking.payment_method === "upi" && booking.payment_status === "upi_pending";
+  const isCashPending = booking.payment_method === "cash" && booking.payment_status === "cash_pending";
+
+  const openUpiApp = async () => {
+    const vpa = ride?.driver?.upi_vpa;
+    const fare = Math.round(booking.agreed_fare ?? ride?.fare ?? 0);
+    const driverName = encodeURIComponent(ride?.driver?.name || "Driver");
+    const note = encodeURIComponent("HopAlong Ride");
+    if (!vpa) { Alert.alert("UPI ID not set", "Ask the driver for their UPI ID to pay."); return; }
+    const url = `upi://pay?pa=${vpa}&pn=${driverName}&am=${fare}&cu=INR&tn=${note}`;
+    const ok = await Linking.canOpenURL(url);
+    if (ok) Linking.openURL(url);
+    else Alert.alert("No UPI App Found", `Pay ₹${fare} to ${vpa} manually.`);
+  };
 
   const handlePayNow = async () => {
     setPaying(true);
@@ -339,9 +357,18 @@ function BookingRow({
           </View>
         )}
 
+        {isUpiPending && (
+          <View style={styles.upiPendingBanner}>
+            <Text style={styles.upiPendingLabel}>UPI payment — waiting for driver to confirm</Text>
+            {ride?.driver?.upi_vpa && (
+              <Text style={styles.upiPendingVpa}>UPI: {ride.driver.upi_vpa}</Text>
+            )}
+          </View>
+        )}
+
         {booking.pickup_otp && booking.status === "confirmed" &&
           ride?.status !== "completed" && ride?.status !== "cancelled" &&
-          booking.payment_status === "held" && (
+          ["held", "upi_received", "cash_collected"].includes(booking.payment_status) && (
           <View style={styles.otpBox}>
             <Text style={styles.otpLabel}>Your pickup code</Text>
             <Text style={styles.otpValue}>{booking.pickup_otp}</Text>
@@ -360,6 +387,18 @@ function BookingRow({
                 ? <ActivityIndicator color="#fff" size="small" />
                 : <Text style={styles.btnText}>Pay Now</Text>}
             </TouchableOpacity>
+          )}
+
+          {isUpiPending && (
+            <TouchableOpacity style={styles.btnUpi} onPress={openUpiApp}>
+              <Text style={styles.btnText}>📱 Open UPI App</Text>
+            </TouchableOpacity>
+          )}
+
+          {isCashPending && (
+            <View style={styles.cashBadge}>
+              <Text style={styles.cashBadgeText}>💵 Pay driver at pickup</Text>
+            </View>
           )}
 
           {booking.status === "confirmed" && ride?.status === "scheduled" && (
@@ -673,6 +712,20 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   btnPrimaryText: { color: Colors.primary, fontWeight: "700", fontSize: 13 },
+
+  // UPI + cash payment styles
+  upiPendingBanner: {
+    backgroundColor: "#f0fdf4", borderRadius: 8, padding: 10,
+    marginTop: 10, borderWidth: 1, borderColor: "#bbf7d0",
+  },
+  upiPendingLabel: { fontSize: 12, fontWeight: "700", color: "#15803d" },
+  upiPendingVpa: { fontSize: 13, color: "#15803d", marginTop: 2 },
+  btnUpi: { backgroundColor: "#7c3aed", borderRadius: 8, paddingHorizontal: 16, paddingVertical: 8 },
+  cashBadge: {
+    backgroundColor: "#fef3c7", borderRadius: 8,
+    paddingHorizontal: 12, paddingVertical: 8, borderWidth: 1, borderColor: "#fde68a",
+  },
+  cashBadgeText: { fontSize: 13, fontWeight: "600", color: "#92400e" },
 
   // Cancellation reason modal
   modalOverlay: {

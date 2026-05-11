@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Alert, ActivityIndicator, TextInput,
+  Alert, ActivityIndicator, TextInput, Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -21,6 +21,9 @@ export default function RideDetailScreen() {
   const [loading, setLoading] = useState(true);
   const [booking, setBooking] = useState(false);
   const [showPrompt, setShowPrompt] = useState(false);
+
+  // Payment method selection
+  const [payMethod, setPayMethod] = useState<"online" | "upi" | "cash">("online");
 
   // Bidding state
   const [showBid, setShowBid] = useState(false);
@@ -54,37 +57,65 @@ export default function RideDetailScreen() {
   const handleBook = async () => {
     setBooking(true);
     try {
-      const bookRes = await createBooking(id);
+      const bookRes = await createBooking(id, 1, payMethod);
       const bookingId = bookRes.data.id;
 
-      // Try to create a Razorpay order; if keys aren't set, skip payment
+      if (payMethod === "cash") {
+        Alert.alert(
+          "Booking Confirmed",
+          "Pay the driver directly at pickup. Check My Rides for your pickup code.",
+          [{ text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") }]
+        );
+        return;
+      }
+
+      if (payMethod === "upi") {
+        const driverVpa = ride.driver?.upi_vpa;
+        const fare = Math.round((ride.agreed_fare ?? ride.fare) * 1);
+        const note = encodeURIComponent("HopAlong Ride");
+        const driverName = encodeURIComponent(ride.driver?.name || "Driver");
+
+        if (driverVpa) {
+          const upiUrl = `upi://pay?pa=${driverVpa}&pn=${driverName}&am=${fare}&cu=INR&tn=${note}`;
+          const supported = await Linking.canOpenURL(upiUrl);
+          if (supported) {
+            await Linking.openURL(upiUrl);
+          } else {
+            Alert.alert("No UPI App Found", `Please pay ₹${fare} to ${driverVpa} manually.`);
+          }
+        } else {
+          Alert.alert("UPI Booking Confirmed", "Driver has not set a UPI ID. Coordinate payment directly.");
+        }
+        Alert.alert(
+          "UPI Payment",
+          "Driver will confirm receipt at pickup. Check My Rides for status.",
+          [{ text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") }]
+        );
+        return;
+      }
+
+      // Online (Razorpay) flow
       let checkoutUrl: string | null = null;
       try {
         await createPaymentOrder(bookingId);
         checkoutUrl = `${API_BASE_URL}/api/payments/checkout/${bookingId}`;
       } catch {
-        // Razorpay not configured — confirm without payment
         Alert.alert("Booked!", "Your seat is reserved.", [
           { text: "OK", onPress: () => router.push("/(tabs)/my-rides") },
         ]);
         return;
       }
 
-      // Open Razorpay checkout in the device browser
       await WebBrowser.openBrowserAsync(checkoutUrl, {
         toolbarColor: Colors.primary,
         controlsColor: "#fff",
       });
 
-      // Browser closed — poll up to 6 s for payment confirmation
       let paid = false;
       for (let i = 0; i < 6; i++) {
         try {
           const statusRes = await getPaymentStatus(bookingId);
-          if (statusRes.data.payment_status === "held") {
-            paid = true;
-            break;
-          }
+          if (statusRes.data.payment_status === "held") { paid = true; break; }
         } catch { break; }
         await new Promise((r) => setTimeout(r, 1000));
       }
@@ -96,15 +127,12 @@ export default function RideDetailScreen() {
       } else {
         Alert.alert(
           "Payment Not Detected",
-          "Didn't complete payment? Your booking will be held briefly. Check My Rides if you did pay.",
+          "Check My Rides to retry payment.",
           [
             { text: "Check My Rides", onPress: () => router.push("/(tabs)/my-rides") },
             {
-              text: "Cancel Booking",
-              style: "destructive",
-              onPress: async () => {
-                try { await cancelBooking(bookingId); } catch {}
-              },
+              text: "Cancel Booking", style: "destructive",
+              onPress: async () => { try { await cancelBooking(bookingId); } catch {} },
             },
           ]
         );
@@ -208,6 +236,41 @@ export default function RideDetailScreen() {
           </View>
         )}
 
+        {/* Payment method picker */}
+        {!isOwner && isScheduled && !isFull && (
+          <View style={styles.payMethodCard}>
+            <Text style={styles.payMethodLabel}>How do you want to pay?</Text>
+            <View style={styles.payMethodRow}>
+              {(["online", "upi", "cash"] as const).map((m) => {
+                const labels = { online: "💳 Online", upi: "📱 UPI", cash: "💵 Cash" };
+                return (
+                  <TouchableOpacity
+                    key={m}
+                    style={[styles.payMethodBtn, payMethod === m && styles.payMethodBtnActive]}
+                    onPress={() => setPayMethod(m)}
+                  >
+                    <Text style={[styles.payMethodBtnText, payMethod === m && styles.payMethodBtnTextActive]}>
+                      {labels[m]}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </View>
+            {payMethod === "upi" && ride.driver?.upi_vpa && (
+              <View style={styles.upiInfoRow}>
+                <Text style={styles.upiInfoLabel}>Driver's UPI ID</Text>
+                <Text style={styles.upiInfoValue}>{ride.driver.upi_vpa}</Text>
+              </View>
+            )}
+            {payMethod === "upi" && !ride.driver?.upi_vpa && (
+              <Text style={styles.upiWarning}>Driver has not added a UPI ID — coordinate payment directly.</Text>
+            )}
+            {payMethod === "cash" && (
+              <Text style={styles.cashNote}>Pay the driver at pickup. Driver confirms receipt.</Text>
+            )}
+          </View>
+        )}
+
         {/* Action buttons */}
         {!isOwner && isScheduled && !isFull && (
           <View style={styles.actionRow}>
@@ -218,7 +281,9 @@ export default function RideDetailScreen() {
             >
               {booking
                 ? <ActivityIndicator color="#fff" />
-                : <Text style={styles.bookBtnText}>Book at {formatPrice(ride.fare)}</Text>}
+                : <Text style={styles.bookBtnText}>
+                    {payMethod === "cash" ? "Book — Pay Cash" : payMethod === "upi" ? "Book — Pay via UPI" : `Book at ${formatPrice(ride.fare)}`}
+                  </Text>}
             </TouchableOpacity>
 
             <TouchableOpacity
@@ -355,4 +420,26 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   placeBidBtn: { backgroundColor: Colors.accent, borderRadius: 14, padding: 18, alignItems: "center" },
+
+  payMethodCard: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: Colors.border, marginBottom: 12,
+  },
+  payMethodLabel: { fontSize: 13, fontWeight: "700", color: Colors.textSecondary, marginBottom: 10 },
+  payMethodRow: { flexDirection: "row", gap: 8 },
+  payMethodBtn: {
+    flex: 1, borderWidth: 1.5, borderColor: Colors.border, borderRadius: 10,
+    paddingVertical: 10, alignItems: "center", backgroundColor: Colors.background,
+  },
+  payMethodBtnActive: { borderColor: Colors.primary, backgroundColor: "#eff6ff" },
+  payMethodBtnText: { fontSize: 13, fontWeight: "600", color: Colors.textSecondary },
+  payMethodBtnTextActive: { color: Colors.primary },
+  upiInfoRow: {
+    marginTop: 12, backgroundColor: "#f0fdf4", borderRadius: 10,
+    padding: 10, borderWidth: 1, borderColor: "#bbf7d0",
+  },
+  upiInfoLabel: { fontSize: 11, fontWeight: "700", color: "#15803d", textTransform: "uppercase", letterSpacing: 0.5 },
+  upiInfoValue: { fontSize: 15, fontWeight: "700", color: "#15803d", marginTop: 2 },
+  upiWarning: { fontSize: 12, color: Colors.accent, marginTop: 10, fontStyle: "italic" },
+  cashNote: { fontSize: 12, color: Colors.textSecondary, marginTop: 10, fontStyle: "italic" },
 });

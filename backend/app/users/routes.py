@@ -27,6 +27,8 @@ def update_me():
         user.name = data["name"].strip()
     if "phone" in data:
         user.phone = data["phone"].strip()
+    if "upi_vpa" in data:
+        user.upi_vpa = data["upi_vpa"].strip() or None
     db.session.commit()
     return jsonify(user.to_dict())
 

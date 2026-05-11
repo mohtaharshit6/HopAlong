@@ -57,8 +57,14 @@ export const getRideBookings = (ride_id: string) => api.get(`/api/rides/${ride_i
 export const getDriverEarnings = () => api.get("/api/rides/earnings");
 
 // ---- Bookings ----
-export const createBooking = (ride_id: string, seats = 1) =>
-  api.post("/api/bookings", { ride_id, seats });
+export const createBooking = (
+  ride_id: string,
+  seats = 1,
+  payment_method: "online" | "upi" | "cash" = "online"
+) => api.post("/api/bookings", { ride_id, seats, payment_method });
+
+export const confirmManualPayment = (booking_id: string) =>
+  api.post(`/api/bookings/${booking_id}/confirm-payment`);
 
 export const getMyBookings = () => api.get("/api/bookings/my");
 export const cancelBooking = (id: string, reason?: string) =>

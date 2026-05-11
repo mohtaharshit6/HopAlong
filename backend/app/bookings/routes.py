@@ -34,13 +34,24 @@ def create_booking():
     if existing and existing.status == "confirmed":
         return jsonify({"error": "You have already booked this ride"}), 409
 
+    method = data.get("payment_method", "online")
+    if method not in ("online", "upi", "cash"):
+        method = "online"
+
+    initial_status = {
+        "online": "pending",
+        "upi": "upi_pending",
+        "cash": "cash_pending",
+    }[method]
+
     pickup_otp = str(random.randint(1000, 9999))
     booking = Booking(
         ride_id=ride_id,
         rider_id=g.user_id,
         seats_booked=seats,
         status="confirmed",
-        payment_status="pending",
+        payment_status=initial_status,
+        payment_method=method,
         pickup_otp=pickup_otp,
     )
     ride.available_seats -= seats
@@ -91,6 +102,37 @@ def verify_pickup(booking_id):
     booking.pickup_verified = True
     db.session.commit()
     return jsonify({"message": "Pickup verified", "booking": booking.to_dict()})
+
+
+@bookings_bp.route("/<booking_id>/confirm-payment", methods=["POST"])
+@require_auth
+def confirm_manual_payment(booking_id):
+    """Driver confirms they received cash or UPI from the rider."""
+    booking = db.session.get(Booking, booking_id)
+    if not booking:
+        return jsonify({"error": "Booking not found"}), 404
+
+    ride = db.session.get(Ride, booking.ride_id)
+    if not ride or ride.driver_id != g.user_id:
+        return jsonify({"error": "Only the ride driver can confirm payment"}), 403
+
+    if booking.payment_method == "cash" and booking.payment_status == "cash_pending":
+        booking.payment_status = "cash_collected"
+    elif booking.payment_method == "upi" and booking.payment_status == "upi_pending":
+        booking.payment_status = "upi_received"
+    else:
+        return jsonify({"error": "Nothing to confirm for this booking"}), 400
+
+    db.session.commit()
+
+    from app.push import notify_user
+    notify_user(
+        booking.rider_id,
+        "Payment Confirmed",
+        "Your driver confirmed your payment. Enjoy the ride!",
+        {"screen": "/(tabs)/my-rides"},
+    )
+    return jsonify({"message": "Payment confirmed", "booking": booking.to_dict()})
 
 
 @bookings_bp.route("/<booking_id>", methods=["DELETE"])

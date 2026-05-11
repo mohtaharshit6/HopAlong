@@ -4,7 +4,7 @@ import {
   Alert, ActivityIndicator, Modal, TextInput,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { getRide, getRideBookings, verifyPickupOtp, completeRide, cancelRide } from "../../../services/api";
+import { getRide, getRideBookings, verifyPickupOtp, completeRide, cancelRide, confirmManualPayment } from "../../../services/api";
 import { Colors } from "../../../constants/colors";
 import { formatPrice } from "../../../utils/currency";
 
@@ -171,18 +171,51 @@ export default function ActiveRideScreen() {
                   {b.seats_booked} seat{b.seats_booked > 1 ? "s" : ""} · {formatPrice((b.agreed_fare ?? ride?.fare) * b.seats_booked)}
                 </Text>
               </View>
-              {b.pickup_verified ? (
-                <View style={styles.verifiedBadge}>
-                  <Text style={styles.verifiedText}>Verified</Text>
-                </View>
-              ) : (
-                <TouchableOpacity
-                  style={styles.verifyBtn}
-                  onPress={() => openOtpModal(b.id)}
-                >
-                  <Text style={styles.verifyBtnText}>Enter OTP</Text>
-                </TouchableOpacity>
-              )}
+              <View style={{ alignItems: "flex-end", gap: 6 }}>
+                {/* Cash / UPI confirmation */}
+                {(b.payment_status === "cash_pending" || b.payment_status === "upi_pending") && (
+                  <TouchableOpacity
+                    style={styles.confirmPayBtn}
+                    onPress={async () => {
+                      try {
+                        await confirmManualPayment(b.id);
+                        setBookings((prev) =>
+                          prev.map((x) =>
+                            x.id === b.id
+                              ? { ...x, payment_status: b.payment_method === "cash" ? "cash_collected" : "upi_received" }
+                              : x
+                          )
+                        );
+                      } catch (e: any) {
+                        Alert.alert("Error", e.response?.data?.error || "Failed");
+                      }
+                    }}
+                  >
+                    <Text style={styles.confirmPayBtnText}>
+                      {b.payment_method === "cash" ? "💵 Cash Received" : "📱 UPI Received"}
+                    </Text>
+                  </TouchableOpacity>
+                )}
+                {(b.payment_status === "cash_collected" || b.payment_status === "upi_received") && (
+                  <View style={styles.payConfirmedBadge}>
+                    <Text style={styles.payConfirmedText}>✓ Paid</Text>
+                  </View>
+                )}
+
+                {/* OTP verification */}
+                {b.pickup_verified ? (
+                  <View style={styles.verifiedBadge}>
+                    <Text style={styles.verifiedText}>Verified</Text>
+                  </View>
+                ) : (
+                  <TouchableOpacity
+                    style={styles.verifyBtn}
+                    onPress={() => openOtpModal(b.id)}
+                  >
+                    <Text style={styles.verifyBtnText}>Enter OTP</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
             </View>
           );
         }}
@@ -322,4 +355,15 @@ const styles = StyleSheet.create({
   confirmBtnDisabled: { backgroundColor: Colors.border },
   confirmBtnText: { color: "#fff", fontSize: 16, fontWeight: "700" },
   cancelModalText: { color: Colors.textSecondary, fontSize: 14, fontWeight: "600" },
+
+  confirmPayBtn: {
+    backgroundColor: "#059669", borderRadius: 16,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  confirmPayBtnText: { color: "#fff", fontSize: 11, fontWeight: "700" },
+  payConfirmedBadge: {
+    backgroundColor: "#d1fae5", borderRadius: 16,
+    paddingHorizontal: 10, paddingVertical: 5,
+  },
+  payConfirmedText: { color: "#059669", fontSize: 11, fontWeight: "700" },
 });
