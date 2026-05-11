@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import {
-  View, Text, FlatList, StyleSheet,
+  View, Text, FlatList, StyleSheet, Modal, Pressable,
   TouchableOpacity, Alert, ActivityIndicator, Switch,
 } from "react-native";
 import { useRouter } from "expo-router";
@@ -176,6 +176,7 @@ function RideRow({
                   booking_id: b.id,
                   rated_user_id: b.rider_id,
                   name: b.rider?.name || "Rider",
+                  context: "rider",
                 },
               })
             }
@@ -204,6 +205,31 @@ function BookingRow({
   const router = useRouter();
   const ride = booking.ride;
   const [paying, setPaying] = useState(false);
+  const [cancelModal, setCancelModal] = useState(false);
+  const [cancelReason, setCancelReason] = useState<string | null>(null);
+  const [cancelling, setCancelling] = useState(false);
+
+  const CANCEL_REASONS = [
+    "Change of plans",
+    "Found another ride",
+    "Driver too far",
+    "Fare too high",
+    "Wrong route details",
+    "Other",
+  ];
+
+  const handleCancelConfirm = async () => {
+    setCancelling(true);
+    try {
+      await cancelBooking(booking.id, cancelReason ?? undefined);
+      setCancelModal(false);
+      onAction();
+    } catch (e: any) {
+      Alert.alert("Error", e.response?.data?.error || "Failed to cancel");
+    } finally {
+      setCancelling(false);
+    }
+  };
 
   const canRate =
     booking.status === "confirmed" &&
@@ -261,89 +287,111 @@ function BookingRow({
   };
 
   return (
-    <View style={styles.card}>
-      <View style={styles.cardHeader}>
-        <Text style={styles.route} numberOfLines={1}>
-          {ride?.start_location} to {ride?.end_location}
+    <>
+      {/* Cancellation reason modal */}
+      <Modal visible={cancelModal} transparent animationType="slide" onRequestClose={() => setCancelModal(false)}>
+        <Pressable style={styles.modalOverlay} onPress={() => setCancelModal(false)}>
+          <Pressable style={styles.modalSheet} onPress={() => {}}>
+            <View style={styles.modalHandle} />
+            <Text style={styles.modalTitle}>Why are you cancelling?</Text>
+            <Text style={styles.modalSub}>This helps drivers improve their service</Text>
+            {CANCEL_REASONS.map((r) => (
+              <TouchableOpacity
+                key={r}
+                style={[styles.reasonRow, cancelReason === r && styles.reasonRowActive]}
+                onPress={() => setCancelReason(r)}
+              >
+                <View style={[styles.reasonDot, cancelReason === r && styles.reasonDotActive]} />
+                <Text style={[styles.reasonText, cancelReason === r && styles.reasonTextActive]}>{r}</Text>
+              </TouchableOpacity>
+            ))}
+            <TouchableOpacity
+              style={[styles.confirmCancelBtn, cancelling && styles.btnDisabled]}
+              onPress={handleCancelConfirm}
+              disabled={cancelling}
+            >
+              {cancelling
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.btnText}>Confirm Cancellation</Text>}
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.keepBtn} onPress={() => setCancelModal(false)}>
+              <Text style={styles.keepBtnText}>Keep my booking</Text>
+            </TouchableOpacity>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <View style={styles.card}>
+        <View style={styles.cardHeader}>
+          <Text style={styles.route} numberOfLines={1}>
+            {ride?.start_location} to {ride?.end_location}
+          </Text>
+          <Text style={[styles.status, { color: STATUS_COLORS[booking.status] }]}>{booking.status}</Text>
+        </View>
+        <Text style={styles.meta}>
+          {ride?.date} · {ride?.time} · {formatPrice(booking.agreed_fare ?? ride?.fare)} · {booking.seats_booked} seat(s)
         </Text>
-        <Text style={[styles.status, { color: STATUS_COLORS[booking.status] }]}>{booking.status}</Text>
-      </View>
-      <Text style={styles.meta}>
-        {ride?.date} · {ride?.time} · {formatPrice(booking.agreed_fare ?? ride?.fare)} · {booking.seats_booked} seat(s)
-      </Text>
 
-      {/* 1b: Payment pending banner */}
-      {needsPayment && (
-        <View style={styles.payNowBanner}>
-          <Text style={styles.payNowLabel}>Payment pending</Text>
-          <Text style={styles.payNowHint}>Complete payment to confirm your seat</Text>
-        </View>
-      )}
-
-      {/* Pickup OTP */}
-      {booking.pickup_otp && booking.status === "confirmed" &&
-        ride?.status !== "completed" && ride?.status !== "cancelled" &&
-        booking.payment_status === "held" && (
-        <View style={styles.otpBox}>
-          <Text style={styles.otpLabel}>Your pickup code</Text>
-          <Text style={styles.otpValue}>{booking.pickup_otp}</Text>
-          <Text style={styles.otpHint}>Show this to your driver at pickup</Text>
-        </View>
-      )}
-
-      <View style={styles.actions}>
-        {/* 1b: Pay Now button */}
         {needsPayment && (
-          <TouchableOpacity
-            style={[styles.btnPayNow, paying && styles.btnDisabled]}
-            onPress={handlePayNow}
-            disabled={paying}
-          >
-            {paying
-              ? <ActivityIndicator color="#fff" size="small" />
-              : <Text style={styles.btnText}>Pay Now</Text>}
-          </TouchableOpacity>
+          <View style={styles.payNowBanner}>
+            <Text style={styles.payNowLabel}>Payment pending</Text>
+            <Text style={styles.payNowHint}>Complete payment to confirm your seat</Text>
+          </View>
         )}
 
-        {booking.status === "confirmed" && ride?.status === "scheduled" && (
-          <TouchableOpacity
-            style={styles.btnRed}
-            onPress={() =>
-              Alert.alert("Cancel booking?", "This may trigger a refund.", [
-                { text: "No", style: "cancel" },
-                {
-                  text: "Yes, Cancel",
-                  onPress: async () => {
-                    try { await cancelBooking(booking.id); onAction(); }
-                    catch (e: any) { Alert.alert("Error", e.response?.data?.error || "Failed"); }
+        {booking.pickup_otp && booking.status === "confirmed" &&
+          ride?.status !== "completed" && ride?.status !== "cancelled" &&
+          booking.payment_status === "held" && (
+          <View style={styles.otpBox}>
+            <Text style={styles.otpLabel}>Your pickup code</Text>
+            <Text style={styles.otpValue}>{booking.pickup_otp}</Text>
+            <Text style={styles.otpHint}>Show this to your driver at pickup</Text>
+          </View>
+        )}
+
+        <View style={styles.actions}>
+          {needsPayment && (
+            <TouchableOpacity
+              style={[styles.btnPayNow, paying && styles.btnDisabled]}
+              onPress={handlePayNow}
+              disabled={paying}
+            >
+              {paying
+                ? <ActivityIndicator color="#fff" size="small" />
+                : <Text style={styles.btnText}>Pay Now</Text>}
+            </TouchableOpacity>
+          )}
+
+          {booking.status === "confirmed" && ride?.status === "scheduled" && (
+            <TouchableOpacity
+              style={styles.btnRed}
+              onPress={() => { setCancelReason(null); setCancelModal(true); }}
+            >
+              <Text style={styles.btnText}>Cancel</Text>
+            </TouchableOpacity>
+          )}
+
+          {canRate && (
+            <TouchableOpacity
+              style={styles.btnRate}
+              onPress={() =>
+                router.push({
+                  pathname: "/rate/[booking_id]",
+                  params: {
+                    booking_id: booking.id,
+                    rated_user_id: ride.driver_id,
+                    name: ride.driver?.name || "Driver",
+                    context: "driver",
                   },
-                },
-              ])
-            }
-          >
-            <Text style={styles.btnText}>Cancel</Text>
-          </TouchableOpacity>
-        )}
-
-        {canRate && (
-          <TouchableOpacity
-            style={styles.btnRate}
-            onPress={() =>
-              router.push({
-                pathname: "/rate/[booking_id]",
-                params: {
-                  booking_id: booking.id,
-                  rated_user_id: ride.driver_id,
-                  name: ride.driver?.name || "Driver",
-                },
-              })
-            }
-          >
-            <Text style={styles.btnText}>Rate Driver ★</Text>
-          </TouchableOpacity>
-        )}
+                })
+              }
+            >
+              <Text style={styles.btnText}>Rate Driver ★</Text>
+            </TouchableOpacity>
+          )}
+        </View>
       </View>
-    </View>
+    </>
   );
 }
 
@@ -625,4 +673,37 @@ const styles = StyleSheet.create({
   btnDisabled: { opacity: 0.5 },
   btnText: { color: "#fff", fontWeight: "700", fontSize: 13 },
   btnPrimaryText: { color: Colors.primary, fontWeight: "700", fontSize: 13 },
+
+  // Cancellation reason modal
+  modalOverlay: {
+    flex: 1, backgroundColor: "rgba(0,0,0,0.45)", justifyContent: "flex-end",
+  },
+  modalSheet: {
+    backgroundColor: "#fff", borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    padding: 24, paddingBottom: 40,
+  },
+  modalHandle: {
+    width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border,
+    alignSelf: "center", marginBottom: 20,
+  },
+  modalTitle: { fontSize: 18, fontWeight: "800", color: Colors.textPrimary, marginBottom: 4 },
+  modalSub: { fontSize: 13, color: Colors.textSecondary, marginBottom: 20 },
+  reasonRow: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  reasonRowActive: { borderBottomColor: Colors.primary },
+  reasonDot: {
+    width: 18, height: 18, borderRadius: 9,
+    borderWidth: 2, borderColor: Colors.border,
+  },
+  reasonDotActive: { borderColor: Colors.primary, backgroundColor: Colors.primary },
+  reasonText: { fontSize: 15, color: Colors.textPrimary },
+  reasonTextActive: { color: Colors.primary, fontWeight: "700" },
+  confirmCancelBtn: {
+    backgroundColor: Colors.error, borderRadius: 14,
+    paddingVertical: 14, alignItems: "center", marginTop: 20,
+  },
+  keepBtn: { alignItems: "center", paddingVertical: 12 },
+  keepBtnText: { fontSize: 15, color: Colors.primary, fontWeight: "700" },
 });

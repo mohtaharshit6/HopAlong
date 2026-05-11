@@ -17,6 +17,7 @@ class Booking(db.Model):
     pickup_otp = db.Column(db.String(4))
     pickup_verified = db.Column(db.Boolean, default=False)
     agreed_fare = db.Column(db.Float)   # set when booking comes from an accepted bid
+    cancel_reason = db.Column(db.String(100))
     created_at = db.Column(db.DateTime, default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
@@ -41,6 +42,7 @@ class Booking(db.Model):
             "payment_status": self.payment_status,
             "pickup_verified": self.pickup_verified or False,
             "agreed_fare": self.agreed_fare,
+            "cancel_reason": self.cancel_reason,
             "created_at": self.created_at.isoformat() if self.created_at else None,
         }
         if show_otp:

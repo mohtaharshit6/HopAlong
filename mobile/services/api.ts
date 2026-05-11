@@ -61,7 +61,8 @@ export const createBooking = (ride_id: string, seats = 1) =>
   api.post("/api/bookings", { ride_id, seats });
 
 export const getMyBookings = () => api.get("/api/bookings/my");
-export const cancelBooking = (id: string) => api.delete(`/api/bookings/${id}`);
+export const cancelBooking = (id: string, reason?: string) =>
+  api.delete(`/api/bookings/${id}`, { data: { reason } });
 export const verifyPickupOtp = (booking_id: string, otp: string) =>
   api.post(`/api/bookings/${booking_id}/verify-pickup`, { otp });
 

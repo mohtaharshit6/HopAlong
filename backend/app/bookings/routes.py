@@ -96,6 +96,9 @@ def verify_pickup(booking_id):
 @bookings_bp.route("/<booking_id>", methods=["DELETE"])
 @require_auth
 def cancel_booking(booking_id):
+    data = request.get_json(silent=True) or {}
+    reason = (data.get("reason") or "").strip()[:100] or None
+
     booking = db.session.get(Booking, booking_id)
     if not booking:
         return jsonify({"error": "Booking not found"}), 404
@@ -109,6 +112,7 @@ def cancel_booking(booking_id):
         ride.available_seats += booking.seats_booked
 
     booking.status = "cancelled"
+    booking.cancel_reason = reason
 
     if booking.razorpay_payment_id and booking.payment_status == "held":
         from app.payments.razorpay_client import refund_payment

@@ -5,6 +5,6 @@ __pycache__/
 venv/
 .venv/
 instance/
-migrations/
+# migrations/   ← tracked so the DB schema history is version-controlled
 *.db
 .pytest_cache/
