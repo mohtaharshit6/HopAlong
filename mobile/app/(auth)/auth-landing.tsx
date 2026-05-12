@@ -20,7 +20,10 @@ export default function AuthLanding() {
       await api.post("/api/auth/send-otp", { phone });
       router.push({ pathname: "/(auth)/otp", params: { phone } });
     } catch (err: any) {
-      Alert.alert("Error", err.response?.data?.error || "Could not send OTP. Check your connection.");
+      const msg = err.code === "ECONNABORTED"
+        ? "Request timed out. Make sure Flask is running and your phone is on the same WiFi."
+        : err.response?.data?.error || "Could not send OTP. Check your connection.";
+      Alert.alert("Could not send OTP", msg);
     } finally {
       setLoading(false);
     }
