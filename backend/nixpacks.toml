@@ -1,5 +1,5 @@
 [phases.build]
-cmds = ["pip install -r requirements.txt", "flask db upgrade"]
+cmds = ["pip install -r requirements.txt"]
 
 [start]
-cmd = "gunicorn run:app"
+cmd = "gunicorn run:app --bind 0.0.0.0:$PORT"
