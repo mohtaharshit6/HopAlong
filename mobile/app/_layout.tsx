@@ -1,8 +1,12 @@
 import { Slot, useSegments, useRouter } from "expo-router";
 import { useEffect, useRef } from "react";
+import { LogBox } from "react-native";
 import * as Notifications from "expo-notifications";
 import { useAuthStore } from "../store/authStore";
 import { registerForPushNotifications } from "../utils/notifications";
+
+// Suppress dev-only overlays — these never appear in production builds
+LogBox.ignoreAllLogs();
 
 export default function RootLayout() {
   const { token, onboardingDone, hydrated, loadStoredAuth } = useAuthStore();

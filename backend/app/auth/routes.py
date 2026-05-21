@@ -42,7 +42,16 @@ def send_otp():
     message = f"Your HopAlong OTP is {otp}. Valid for 5 minutes. Do not share it with anyone."
     send_sms(e164, message)
 
-    return jsonify({"message": "OTP sent", "expiresIn": 300})
+    # Dev mode: no Twilio credentials → surface OTP in response so the app can auto-fill
+    is_dev = not (
+        os.environ.get("TWILIO_ACCOUNT_SID") and
+        os.environ.get("TWILIO_AUTH_TOKEN") and
+        os.environ.get("TWILIO_PHONE_NUMBER")
+    )
+    resp: dict = {"message": "OTP sent", "expiresIn": 300}
+    if is_dev:
+        resp["devOtp"] = otp
+    return jsonify(resp)
 
 
 @auth_bp.route("/verify-otp", methods=["POST"])

@@ -17,8 +17,11 @@ export default function AuthLanding() {
     if (phone.length !== 10) return;
     setLoading(true);
     try {
-      await api.post("/api/auth/send-otp", { phone });
-      router.push({ pathname: "/(auth)/otp", params: { phone } });
+      const res = await api.post("/api/auth/send-otp", { phone });
+      router.push({
+        pathname: "/(auth)/otp",
+        params: { phone, devOtp: res.data.devOtp ?? "" },
+      });
     } catch (err: any) {
       const msg = err.code === "ECONNABORTED"
         ? "Request timed out. Make sure Flask is running and your phone is on the same WiFi."

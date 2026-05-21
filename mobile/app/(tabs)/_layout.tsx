@@ -41,42 +41,44 @@ export default function TabsLayout() {
             height: 60,
           },
           tabBarLabelStyle: { fontSize: 11, fontWeight: "600" },
-          headerStyle: { backgroundColor: Colors.primary },
-          headerTintColor: "#fff",
-          headerTitleStyle: { fontWeight: "700" },
+          headerShown: false,
         }}
       >
         <Tabs.Screen
           name="index"
           options={{
-            title: "Find Rides",
-            tabBarIcon: icon("compass-outline", "compass"),
+            title: "Home",
+            tabBarIcon: icon("home-outline", "home"),
           }}
         />
         <Tabs.Screen
-          name="offer"
+          name="services"
           options={{
-            title: "Offer Ride",
-            tabBarIcon: icon("add-circle-outline", "add-circle"),
+            title: "Services",
+            tabBarIcon: icon("apps-outline", "apps"),
           }}
-          listeners={{ tabPress: guard("/(tabs)/offer") }}
         />
         <Tabs.Screen
           name="my-rides"
           options={{
-            title: "My Rides",
+            title: "Activity",
             tabBarBadge: pendingRatings,
-            tabBarIcon: icon("car-outline", "car"),
+            tabBarIcon: icon("time-outline", "time"),
           }}
           listeners={{ tabPress: guard("/(tabs)/my-rides") }}
         />
         <Tabs.Screen
           name="profile"
           options={{
-            title: "Profile",
+            title: "Account",
             tabBarIcon: icon("person-outline", "person"),
           }}
           listeners={{ tabPress: guard("/(tabs)/profile") }}
+        />
+        {/* Offer Ride: navigated to from grid cards, not in the tab bar */}
+        <Tabs.Screen
+          name="offer"
+          options={{ href: null }}
         />
       </Tabs>
       <LoginPromptSheet visible={showPrompt} onClose={() => setShowPrompt(false)} />

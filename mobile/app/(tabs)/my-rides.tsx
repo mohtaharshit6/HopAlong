@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   View, Text, FlatList, StyleSheet, Modal, Pressable,
-  TouchableOpacity, Alert, ActivityIndicator, Switch,
+  TouchableOpacity, Alert, ActivityIndicator, Switch, SafeAreaView,
 } from "react-native";
 import { useFocusEffect, useRouter } from "expo-router";
 import * as WebBrowser from "expo-web-browser";
@@ -588,7 +588,14 @@ export default function MyRidesScreen() {
   ];
 
   return (
+    <SafeAreaView style={styles.safe}>
     <View style={styles.container}>
+      {/* Screen header */}
+      <View style={styles.screenHeader}>
+        <Text style={styles.screenTitle}>Activity</Text>
+        <Text style={styles.screenSub}>Your rides as driver and rider</Text>
+      </View>
+
       <View style={styles.tabBar}>
         {(["offered", "booked"] as const).map((t) => (
           <TouchableOpacity
@@ -640,11 +647,19 @@ export default function MyRidesScreen() {
         />
       )}
     </View>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: Colors.background },
+  safe: { flex: 1, backgroundColor: Colors.background },
+  container: { flex: 1 },
+  screenHeader: {
+    paddingHorizontal: 20, paddingTop: 24, paddingBottom: 16,
+    backgroundColor: Colors.background,
+  },
+  screenTitle: { fontSize: 26, fontWeight: "800", color: Colors.textPrimary },
+  screenSub: { fontSize: 13, color: Colors.textSecondary, marginTop: 2 },
   tabBar: {
     flexDirection: "row", backgroundColor: Colors.surface,
     borderBottomWidth: 1, borderBottomColor: Colors.border,

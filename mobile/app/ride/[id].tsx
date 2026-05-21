@@ -4,16 +4,13 @@ import {
   Alert, ActivityIndicator, TextInput, Linking,
 } from "react-native";
 import { useLocalSearchParams, useRouter } from "expo-router";
-import * as WebBrowser from "expo-web-browser";
 import {
-  getRide, createBooking, cancelBooking,
-  createPaymentOrder, getPaymentStatus, createBid,
+  getRide, createBooking, createBid,
 } from "../../services/api";
 import { useAuthStore } from "../../store/authStore";
 import LoginPromptSheet from "../../components/LoginPromptSheet";
 import { Colors } from "../../constants/colors";
 import { formatPrice, getCurrencySymbol } from "../../utils/currency";
-import { API_BASE_URL } from "../../constants/api";
 
 export default function RideDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
@@ -23,7 +20,7 @@ export default function RideDetailScreen() {
   const [showPrompt, setShowPrompt] = useState(false);
 
   // Payment method selection
-  const [payMethod, setPayMethod] = useState<"online" | "upi" | "cash">("online");
+  const [payMethod, setPayMethod] = useState<"upi" | "cash">("upi");
 
   // Bidding state
   const [showBid, setShowBid] = useState(false);
@@ -101,50 +98,6 @@ export default function RideDetailScreen() {
         }
         return;
       }
-
-      // Online (Razorpay) flow
-      let checkoutUrl: string | null = null;
-      try {
-        await createPaymentOrder(bookingId);
-        checkoutUrl = `${API_BASE_URL}/api/payments/checkout/${bookingId}`;
-      } catch {
-        Alert.alert("Booked!", "Your seat is reserved.", [
-          { text: "OK", onPress: () => router.push("/(tabs)/my-rides") },
-        ]);
-        return;
-      }
-
-      await WebBrowser.openBrowserAsync(checkoutUrl, {
-        toolbarColor: Colors.primary,
-        controlsColor: "#fff",
-      });
-
-      let paid = false;
-      for (let i = 0; i < 6; i++) {
-        try {
-          const statusRes = await getPaymentStatus(bookingId);
-          if (statusRes.data.payment_status === "held") { paid = true; break; }
-        } catch { break; }
-        await new Promise((r) => setTimeout(r, 1000));
-      }
-
-      if (paid) {
-        Alert.alert("Payment Successful!", "Your seat is confirmed.", [
-          { text: "View My Rides", onPress: () => router.push("/(tabs)/my-rides") },
-        ]);
-      } else {
-        Alert.alert(
-          "Payment Not Detected",
-          "Check My Rides to retry payment.",
-          [
-            { text: "Check My Rides", onPress: () => router.push("/(tabs)/my-rides") },
-            {
-              text: "Cancel Booking", style: "destructive",
-              onPress: async () => { try { await cancelBooking(bookingId); } catch {} },
-            },
-          ]
-        );
-      }
     } catch (err: any) {
       Alert.alert("Booking failed", err.response?.data?.error || "Something went wrong");
     } finally {
@@ -218,7 +171,7 @@ export default function RideDetailScreen() {
               <Text style={styles.statLabel}>per seat</Text>
             </View>
             <View style={styles.stat}>
-              <Text style={styles.statValue}>{ride.status}</Text>
+              <Text style={styles.statValue} numberOfLines={1} adjustsFontSizeToFit>{ride.status}</Text>
               <Text style={styles.statLabel}>status</Text>
             </View>
           </View>
@@ -244,13 +197,24 @@ export default function RideDetailScreen() {
           </View>
         )}
 
+        {/* Owner message */}
+        {isOwner && (
+          <View style={styles.ownerCard}>
+            <Text style={styles.ownerIcon}>🚗</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.ownerTitle}>You posted this ride</Text>
+              <Text style={styles.ownerSub}>You can't book your own ride</Text>
+            </View>
+          </View>
+        )}
+
         {/* Payment method picker */}
         {!isOwner && isScheduled && !isFull && (
           <View style={styles.payMethodCard}>
             <Text style={styles.payMethodLabel}>How do you want to pay?</Text>
             <View style={styles.payMethodRow}>
-              {(["online", "upi", "cash"] as const).map((m) => {
-                const labels = { online: "💳 Online", upi: "📱 UPI", cash: "💵 Cash" };
+              {(["upi", "cash"] as const).map((m) => {
+                const labels = { upi: "📱 UPI", cash: "💵 Cash" };
                 return (
                   <TouchableOpacity
                     key={m}
@@ -290,7 +254,7 @@ export default function RideDetailScreen() {
               {booking
                 ? <ActivityIndicator color="#fff" />
                 : <Text style={styles.bookBtnText}>
-                    {payMethod === "cash" ? "Book — Pay Cash" : payMethod === "upi" ? "Book — Pay via UPI" : `Book at ${formatPrice(ride.fare)}`}
+                    {payMethod === "cash" ? "Book — Pay Cash" : "Book — Pay via UPI"}
                   </Text>}
             </TouchableOpacity>
 
@@ -428,6 +392,15 @@ const styles = StyleSheet.create({
     marginBottom: 16,
   },
   placeBidBtn: { backgroundColor: Colors.accent, borderRadius: 14, padding: 18, alignItems: "center" },
+
+  ownerCard: {
+    flexDirection: "row", alignItems: "center", gap: 12,
+    backgroundColor: "#f0f9ff", borderRadius: 14, padding: 14,
+    borderWidth: 1.5, borderColor: "#bae6fd", marginBottom: 12,
+  },
+  ownerIcon: { fontSize: 28 },
+  ownerTitle: { fontSize: 14, fontWeight: "700", color: Colors.textPrimary },
+  ownerSub: { fontSize: 12, color: Colors.textSecondary, marginTop: 2 },
 
   payMethodCard: {
     backgroundColor: Colors.surface, borderRadius: 16, padding: 16,

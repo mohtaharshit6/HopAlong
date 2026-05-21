@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
   View, Text, TouchableOpacity, StyleSheet, ScrollView,
   Alert, Platform, ActivityIndicator, Modal,
@@ -6,6 +6,7 @@ import {
 import { useRouter } from "expo-router";
 import DateTimePicker from "@react-native-community/datetimepicker";
 import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
+import * as Location from "expo-location";
 import { createRide } from "../../services/api";
 import { getDistanceMatrix, suggestFare } from "../../services/maps";
 import { Colors } from "../../constants/colors";
@@ -13,7 +14,7 @@ import { getCurrencySymbol, formatPrice } from "../../utils/currency";
 
 const GMAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
 
-interface Location {
+interface LocationObj {
   name: string;
   lat: number;
   lng: number;
@@ -29,8 +30,8 @@ export default function OfferRideScreen() {
   const [time, setTime] = useState(new Date());
   const [showTimePicker, setShowTimePicker] = useState(false);
 
-  const [origin, setOrigin] = useState<Location | null>(null);
-  const [destination, setDestination] = useState<Location | null>(null);
+  const [origin, setOrigin] = useState<LocationObj | null>(null);
+  const [destination, setDestination] = useState<LocationObj | null>(null);
 
   const [seats, setSeats] = useState(1);
   const [fare, setFare] = useState<number | null>(null);
@@ -38,10 +39,89 @@ export default function OfferRideScreen() {
   const [fetchingDistance, setFetchingDistance] = useState(false);
   const [loading, setLoading] = useState(false);
 
+  // Location biasing state
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  // "pending" → resolving GPS; "ready" → autocompletes can mount with biased query
+  const [locationKey, setLocationKey] = useState<"pending" | "ready">("pending");
+  const [usingCurrentLocation, setUsingCurrentLocation] = useState(false);
+
   const originRef = useRef<any>(null);
   const destRef = useRef<any>(null);
 
-  const fetchDistance = async (o: Location, d: Location) => {
+  // Resolve user coords on mount using last-known (instant) before falling back to fresh GPS
+  useEffect(() => {
+    (async () => {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        setLocationKey("ready");
+        return;
+      }
+      const last = await Location.getLastKnownPositionAsync();
+      if (last) {
+        setUserCoords({ lat: last.coords.latitude, lng: last.coords.longitude });
+        setLocationKey("ready");
+        return;
+      }
+      // Only reached on first-ever app launch when device has no cached position
+      const fresh = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.Balanced,
+      });
+      setUserCoords({ lat: fresh.coords.latitude, lng: fresh.coords.longitude });
+      setLocationKey("ready");
+    })();
+  }, []);
+
+  const placesQuery = {
+    key: GMAPS_KEY,
+    language: "en",
+    components: "country:in",
+    ...(userCoords && {
+      location: `${userCoords.lat},${userCoords.lng}`,
+      radius: 50000,
+    }),
+  };
+
+  const handleUseCurrentLocation = async () => {
+    setUsingCurrentLocation(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== "granted") {
+        Alert.alert("Permission Denied", "Enable location access to use this feature.");
+        return;
+      }
+      // Reuse already-resolved coords if available, otherwise re-fetch
+      let coords = userCoords;
+      if (!coords) {
+        const last = await Location.getLastKnownPositionAsync();
+        if (last) {
+          coords = { lat: last.coords.latitude, lng: last.coords.longitude };
+        } else {
+          const fresh = await Location.getCurrentPositionAsync({
+            accuracy: Location.Accuracy.Balanced,
+          });
+          coords = { lat: fresh.coords.latitude, lng: fresh.coords.longitude };
+        }
+      }
+      const [geo] = await Location.reverseGeocodeAsync({
+        latitude: coords.lat,
+        longitude: coords.lng,
+      });
+      const address = [geo.name, geo.street, geo.district ?? geo.subregion, geo.city]
+        .filter(Boolean)
+        .join(", ");
+
+      originRef.current?.setAddressText(address);
+      const loc: LocationObj = { name: address, lat: coords.lat, lng: coords.lng };
+      setOrigin(loc);
+      if (destination) fetchDistance(loc, destination);
+    } catch {
+      Alert.alert("Error", "Could not determine your location.");
+    } finally {
+      setUsingCurrentLocation(false);
+    }
+  };
+
+  const fetchDistance = async (o: LocationObj, d: LocationObj) => {
     setFetchingDistance(true);
     const result = await getDistanceMatrix(o.lat, o.lng, d.lat, d.lng);
     setFetchingDistance(false);
@@ -52,7 +132,7 @@ export default function OfferRideScreen() {
   };
 
   const onOriginSelected = (data: any, details: any) => {
-    const loc: Location = {
+    const loc: LocationObj = {
       name: data.description,
       lat: details.geometry.location.lat,
       lng: details.geometry.location.lng,
@@ -62,7 +142,7 @@ export default function OfferRideScreen() {
   };
 
   const onDestinationSelected = (data: any, details: any) => {
-    const loc: Location = {
+    const loc: LocationObj = {
       name: data.description,
       lat: details.geometry.location.lat,
       lng: details.geometry.location.lng,
@@ -99,7 +179,7 @@ export default function OfferRideScreen() {
         total_seats: seats,
         fare,
       });
-      Alert.alert("Ride Posted! 🎉", "Riders can now see and book your ride.", [
+      Alert.alert("Ride Posted!", "Riders can now see and book your ride.", [
         { text: "OK", onPress: () => router.push("/(tabs)") },
       ]);
     } catch (err: any) {
@@ -113,7 +193,7 @@ export default function OfferRideScreen() {
     <ScrollView
       style={styles.container}
       contentContainerStyle={styles.content}
-      keyboardShouldPersistTaps="handled"
+      keyboardShouldPersistTaps="always"
     >
       <Text style={styles.heading}>Offer a Ride</Text>
 
@@ -135,13 +215,34 @@ export default function OfferRideScreen() {
 
       {/* ORIGIN */}
       <Text style={styles.label}>Starting Point</Text>
-      <View style={styles.autocompleteWrap}>
+
+      {/* Use Current Location button */}
+      <TouchableOpacity
+        style={styles.currentLocBtn}
+        onPress={handleUseCurrentLocation}
+        disabled={usingCurrentLocation}
+        activeOpacity={0.75}
+      >
+        {usingCurrentLocation ? (
+          <ActivityIndicator size="small" color={Colors.primary} />
+        ) : (
+          <>
+            <Text style={styles.currentLocIcon}>⊙</Text>
+            <Text style={styles.currentLocText}>Use Current Location</Text>
+          </>
+        )}
+      </TouchableOpacity>
+
+      {/* Origin wrapper gets higher zIndex so its dropdown renders above destination input */}
+      <View style={[styles.autocompleteWrap, { zIndex: 20 }]}>
         <GooglePlacesAutocomplete
+          key={`origin-${locationKey}`}
           ref={originRef}
           placeholder="Where are you starting from?"
           fetchDetails
+          minLength={1}
           onPress={onOriginSelected}
-          query={{ key: GMAPS_KEY, language: "en", components: "country:in" }}
+          query={placesQuery}
           styles={autocompleteStyles}
           enablePoweredByContainer={false}
           renderLeftButton={() => <Text style={styles.pinIcon}>🔵</Text>}
@@ -150,13 +251,15 @@ export default function OfferRideScreen() {
 
       {/* DESTINATION */}
       <Text style={styles.label}>Destination</Text>
-      <View style={styles.autocompleteWrap}>
+      <View style={[styles.autocompleteWrap, { zIndex: 10 }]}>
         <GooglePlacesAutocomplete
+          key={`dest-${locationKey}`}
           ref={destRef}
           placeholder="Where are you going?"
           fetchDetails
+          minLength={1}
           onPress={onDestinationSelected}
-          query={{ key: GMAPS_KEY, language: "en", components: "country:in" }}
+          query={placesQuery}
           styles={autocompleteStyles}
           enablePoweredByContainer={false}
           renderLeftButton={() => <Text style={styles.pinIcon}>🟠</Text>}
@@ -279,7 +382,25 @@ const styles = StyleSheet.create({
   pickerIcon: { fontSize: 18 },
   pickerText: { fontSize: 15, color: Colors.textPrimary, fontWeight: "500" },
 
+  currentLocBtn: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: Colors.surface, borderRadius: 12,
+    paddingVertical: 10, paddingHorizontal: 14,
+    borderWidth: 1.5, borderColor: Colors.primary,
+    marginBottom: 10, alignSelf: "flex-start", gap: 6,
+    minWidth: 48, minHeight: 40,
+  },
+  currentLocIcon: { fontSize: 16, color: Colors.primary },
+  currentLocText: { fontSize: 14, fontWeight: "700", color: Colors.primary },
+
   autocompleteWrap: { zIndex: 10 },
+  autocompletePlaceholder: {
+    flexDirection: "row", alignItems: "center",
+    backgroundColor: Colors.surface, borderRadius: 14,
+    padding: 14, borderWidth: 1.5, borderColor: Colors.border,
+    height: 48,
+  },
+  placeholderText: { fontSize: 14, color: Colors.textSecondary },
   pinIcon: { fontSize: 16, paddingHorizontal: 10, paddingTop: 12 },
 
   distanceCard: {

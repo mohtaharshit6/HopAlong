@@ -1,209 +1,347 @@
-import { useEffect, useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import {
-  View, Text, StyleSheet, FlatList, TouchableOpacity,
-  ActivityIndicator, RefreshControl, Animated, Dimensions, TextInput,
+  View, Text, TouchableOpacity, StyleSheet, ScrollView,
+  SafeAreaView, TextInput, Modal, Alert, ActivityIndicator,
+  Dimensions, StatusBar,
 } from "react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
-import * as Location from "expo-location";
 import { useRouter } from "expo-router";
-import { getRides } from "../../services/api";
-import RideCard from "../../components/RideCard";
+import * as Location from "expo-location";
+import { GooglePlacesAutocomplete } from "react-native-google-places-autocomplete";
+import { useAuthStore } from "../../store/authStore";
 import { Colors } from "../../constants/colors";
 
-const { height } = Dimensions.get("window");
-const SHEET_PEEK = 220;
-const SHEET_FULL = height * 0.62;
+const GMAPS_KEY = process.env.EXPO_PUBLIC_GOOGLE_MAPS_KEY ?? "";
+const { width } = Dimensions.get("window");
+// Show 3 cards + a peek of the 4th to signal scrollability
+const CAROUSEL_CARD_W = (width - 40) / 3.2;
+
+const SERVICES = [
+  { id: "offer",     label: "Offer Ride", emoji: "🚗", route: "/(tabs)/offer",    comingSoon: false },
+  { id: "find",      label: "Find Ride",  emoji: "🔍", route: "/(tabs)/services", comingSoon: false },
+  { id: "trip",      label: "Trip",       emoji: "📍", route: "/(tabs)/services", comingSoon: false },
+  { id: "bike",      label: "Bike",       emoji: "🛵", route: null,               comingSoon: true },
+  { id: "toto",      label: "Toto",       emoji: "🛺", route: null,               comingSoon: true },
+  { id: "rentals",   label: "Rentals",    emoji: "🔑", route: null,               comingSoon: true },
+  { id: "parcel",    label: "Parcel",     emoji: "📦", route: null,               comingSoon: true },
+  { id: "reserve",   label: "Reserve",    emoji: "📅", route: null,               comingSoon: true },
+  { id: "intercity", label: "Intercity",  emoji: "🛣️", route: null,               comingSoon: true },
+  { id: "teens",     label: "Teens",      emoji: "👦", route: null,               comingSoon: true },
+];
+
+const PROMO = [
+  { id: "1", emoji: "💰", title: "Save every day with HopAlong", sub: "Share rides, split costs — better for your wallet and the planet." },
+  { id: "2", emoji: "🛡️", title: "Verified drivers, real-time tracking", sub: "Every driver is reviewed. Track your ride live from pickup to drop." },
+];
+
+function greeting() {
+  const h = new Date().getHours();
+  if (h < 12) return "Good morning";
+  if (h < 17) return "Good afternoon";
+  return "Good evening";
+}
 
 export default function HomeScreen() {
   const router = useRouter();
-  const [rides, setRides] = useState<any[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [region, setRegion] = useState({
-    latitude: 23.2599,
-    longitude: 77.4126,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  });
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [searchText, setSearchText] = useState("");
+  const user = useAuthStore((s) => s.user);
 
-  const sheetY = useRef(new Animated.Value(0)).current;
-  const [sheetOpen, setSheetOpen] = useState(false);
+  const [userCoords, setUserCoords] = useState<{ lat: number; lng: number } | null>(null);
+  const [locationKey, setLocationKey] = useState<"pending" | "ready">("pending");
+  const [showSearch, setShowSearch] = useState(false);
+  const [fromText, setFromText] = useState("Current Location");
+  const [fromCoords, setFromCoords] = useState<{ lat: number; lng: number } | null>(null);
 
-  const toggleSheet = () => {
-    Animated.spring(sheetY, {
-      toValue: sheetOpen ? 0 : SHEET_FULL - SHEET_PEEK,
-      useNativeDriver: true,
-      tension: 65,
-      friction: 11,
-    }).start();
-    setSheetOpen((v) => !v);
-  };
-
-  const fetchRides = async (loc?: { lat: number; lng: number }) => {
-    try {
-      const params = loc ? { lat: loc.lat, lng: loc.lng, radius: 30 } : undefined;
-      const res = await getRides(params);
-      setRides(res.data);
-    } catch {
-      // keep current list
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  };
-
+  // lastKnown first (instant) → fresh GPS only if no cached position
   useEffect(() => {
     (async () => {
       const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status === "granted") {
-        const loc = await Location.getCurrentPositionAsync({});
-        const coords = { lat: loc.coords.latitude, lng: loc.coords.longitude };
-        setUserLocation(coords);
-        setRegion((r) => ({ ...r, latitude: coords.lat, longitude: coords.lng }));
-        fetchRides(coords);
-      } else {
-        fetchRides();
+      if (status !== "granted") { setLocationKey("ready"); return; }
+      const last = await Location.getLastKnownPositionAsync();
+      if (last) {
+        const c = { lat: last.coords.latitude, lng: last.coords.longitude };
+        setUserCoords(c); setFromCoords(c); setLocationKey("ready"); return;
       }
+      const fresh = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const c = { lat: fresh.coords.latitude, lng: fresh.coords.longitude };
+      setUserCoords(c); setFromCoords(c); setLocationKey("ready");
     })();
   }, []);
 
-  const filteredRides = rides.filter((r) => {
-    if (!searchText) return true;
-    const q = searchText.toLowerCase();
-    return (
-      r.start_location?.toLowerCase().includes(q) ||
-      r.end_location?.toLowerCase().includes(q)
-    );
-  });
+  const placesQuery = {
+    key: GMAPS_KEY,
+    language: "en",
+    components: "country:in",
+    ...(userCoords && {
+      location: `${userCoords.lat},${userCoords.lng}`,
+      radius: 30000,
+      strictbounds: true,
+    }),
+  };
+
+  const handleServicePress = (s: typeof SERVICES[0]) => {
+    if (s.comingSoon) {
+      Alert.alert("Coming Soon!", `${s.label} will be available soon.`);
+      return;
+    }
+    router.push(s.route as any);
+  };
+
+  const handleDestSelected = (data: any, details: any) => {
+    router.push({
+      pathname: "/(tabs)/services",
+      params: {
+        destName: data.description,
+        destLat: String(details.geometry.location.lat),
+        destLng: String(details.geometry.location.lng),
+        fromName: fromText,
+        fromLat: String(fromCoords?.lat ?? userCoords?.lat ?? ""),
+        fromLng: String(fromCoords?.lng ?? userCoords?.lng ?? ""),
+      },
+    } as any);
+    setShowSearch(false);
+  };
 
   return (
-    <View style={styles.container}>
-      {/* MAP */}
-      <MapView
-        style={styles.map}
-        provider={PROVIDER_GOOGLE}
-        region={region}
-        showsUserLocation
-        showsMyLocationButton={false}
+    <SafeAreaView style={styles.safe}>
+      <StatusBar barStyle="dark-content" backgroundColor="#fff" />
+      <ScrollView
+        style={styles.scroll}
+        contentContainerStyle={styles.content}
+        showsVerticalScrollIndicator={false}
       >
-        {rides.map((ride) =>
-          ride.start_lat && ride.start_lng ? (
-            <Marker
-              key={ride.id}
-              coordinate={{ latitude: ride.start_lat, longitude: ride.start_lng }}
-              title={ride.start_location}
-              description={`${ride.available_seats} seat${ride.available_seats !== 1 ? "s" : ""} available`}
-              pinColor={Colors.primary}
-              onPress={() => router.push(`/ride/${ride.id}`)}
-            />
-          ) : null
-        )}
-      </MapView>
+        {/* ── Header ── */}
+        <View style={styles.header}>
+          <View>
+            <Text style={styles.greetText}>{greeting()},</Text>
+            <Text style={styles.userName}>
+              {user?.name?.split(" ")[0] || "there"} 👋
+            </Text>
+          </View>
+          <TouchableOpacity
+            style={styles.bellBtn}
+            onPress={() => router.push("/(tabs)/my-rides" as any)}
+          >
+            <Text style={styles.bellIcon}>🔔</Text>
+          </TouchableOpacity>
+        </View>
 
-      {/* SEARCH BAR */}
-      <View style={styles.searchWrap}>
-        <TextInput
-          style={styles.searchInput}
-          placeholder="🔍  Search by location…"
-          placeholderTextColor={Colors.textSecondary}
-          value={searchText}
-          onChangeText={setSearchText}
-          onFocus={() => { if (!sheetOpen) toggleSheet(); }}
-        />
-      </View>
-
-      {/* BOTTOM SHEET */}
-      <Animated.View
-        style={[
-          styles.sheet,
-          { transform: [{ translateY: Animated.multiply(sheetY, -1) }] },
-        ]}
-      >
-        {/* Handle */}
-        <TouchableOpacity style={styles.handleWrap} onPress={toggleSheet} activeOpacity={0.9}>
-          <View style={styles.handle} />
-          <Text style={styles.sheetTitle}>
-            {loading ? "Loading rides…" : `${filteredRides.length} ride${filteredRides.length !== 1 ? "s" : ""} available`}
-          </Text>
+        {/* ── Where to? card ── */}
+        <TouchableOpacity
+          style={styles.whereCard}
+          onPress={() => setShowSearch(true)}
+          activeOpacity={0.85}
+        >
+          <View style={styles.whereRow}>
+            <View style={styles.dotBlue} />
+            <Text style={styles.fromText} numberOfLines={1}>{fromText}</Text>
+            <View style={styles.whereDivider} />
+            <Text style={styles.wherePlaceholder}>Where to?</Text>
+          </View>
+          <View style={styles.laterPill}>
+            <Text style={styles.laterText}>🕐 Later</Text>
+          </View>
         </TouchableOpacity>
 
-        {loading ? (
-          <ActivityIndicator color={Colors.primary} style={{ marginTop: 24 }} />
-        ) : (
-          <FlatList
-            data={filteredRides}
-            keyExtractor={(item) => item.id}
-            renderItem={({ item }) => <RideCard ride={item} />}
-            contentContainerStyle={styles.list}
-            showsVerticalScrollIndicator={false}
-            refreshControl={
-              <RefreshControl
-                refreshing={refreshing}
-                onRefresh={() => { setRefreshing(true); fetchRides(userLocation ?? undefined); }}
-                colors={[Colors.primary]}
-              />
-            }
-            ListEmptyComponent={
-              <View style={styles.empty}>
-                <Text style={styles.emptyEmoji}>🚗</Text>
-                <Text style={styles.emptyTitle}>No rides found</Text>
-                <Text style={styles.emptySubtitle}>
-                  {searchText ? "Try a different search" : "Be the first to offer one!"}
-                </Text>
-                {!searchText && (
-                  <TouchableOpacity
-                    style={styles.offerBtn}
-                    onPress={() => router.push("/(tabs)/offer")}
-                  >
-                    <Text style={styles.offerBtnText}>+ Offer a Ride</Text>
-                  </TouchableOpacity>
-                )}
+        {/* ── For You carousel (1 row, 3 visible + peek) ── */}
+        <Text style={styles.sectionLabel}>For You</Text>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          style={styles.carouselScroll}
+          contentContainerStyle={styles.carouselContent}
+        >
+          {SERVICES.map((s) => (
+            <TouchableOpacity
+              key={s.id}
+              style={styles.serviceCard}
+              onPress={() => handleServicePress(s)}
+              activeOpacity={0.75}
+            >
+              {s.comingSoon && (
+                <View style={styles.soonChip}>
+                  <Text style={styles.soonText}>Soon</Text>
+                </View>
+              )}
+              <Text style={styles.serviceEmoji}>{s.emoji}</Text>
+              <Text style={styles.serviceLabel}>{s.label}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+
+        {/* ── Promo feed ── */}
+        <Text style={styles.sectionLabel}>Highlights</Text>
+        {PROMO.map((p) => (
+          <View key={p.id} style={styles.promoCard}>
+            <Text style={styles.promoEmoji}>{p.emoji}</Text>
+            <View style={styles.promoBody}>
+              <Text style={styles.promoTitle}>{p.title}</Text>
+              <Text style={styles.promoSub}>{p.sub}</Text>
+            </View>
+          </View>
+        ))}
+
+        <View style={{ height: 32 }} />
+      </ScrollView>
+
+      {/* ── Where to? modal ── */}
+      <Modal visible={showSearch} animationType="slide" statusBarTranslucent onRequestClose={() => setShowSearch(false)}>
+        <SafeAreaView style={styles.modalSafe}>
+          {/* Modal header */}
+          <View style={styles.modalHeader}>
+            <TouchableOpacity style={styles.backBtn} onPress={() => setShowSearch(false)}>
+              <Text style={styles.backText}>←</Text>
+            </TouchableOpacity>
+            <Text style={styles.modalTitle}>Plan your ride</Text>
+          </View>
+
+          {/* FROM row */}
+          <View style={styles.searchRow}>
+            <View style={styles.dotBlue} />
+            <TextInput
+              style={styles.searchInput}
+              value={fromText}
+              onChangeText={setFromText}
+              placeholder="Starting point"
+              placeholderTextColor={Colors.textSecondary}
+            />
+          </View>
+          <View style={styles.searchSep} />
+
+          {/* TO row — only mounts when locationKey=ready so query is fully biased */}
+          <View style={styles.searchRow}>
+            <View style={styles.dotOrange} />
+            {locationKey === "ready" ? (
+              <View style={{ flex: 1 }}>
+                <GooglePlacesAutocomplete
+                  key="dest-modal"
+                  placeholder="Where to?"
+                  fetchDetails
+                  onPress={handleDestSelected}
+                  query={placesQuery}
+                  styles={acStyles}
+                  enablePoweredByContainer={false}
+                  autoFocus
+                />
               </View>
-            }
-          />
-        )}
-      </Animated.View>
-    </View>
+            ) : (
+              <View style={styles.loadingRow}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+                <Text style={styles.loadingText}>Getting your location…</Text>
+              </View>
+            )}
+          </View>
+        </SafeAreaView>
+      </Modal>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1 },
-  map: { flex: 1 },
+  safe: { flex: 1, backgroundColor: "#fff" },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 20, paddingTop: 28, paddingBottom: 40 },
 
-  searchWrap: {
-    position: "absolute", top: 52, left: 16, right: 16, zIndex: 10,
+  header: { flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 20 },
+  greetText: { fontSize: 13, color: Colors.textSecondary, fontWeight: "500" },
+  userName: { fontSize: 22, fontWeight: "800", color: Colors.textPrimary, marginTop: 2 },
+  bellBtn: {
+    width: 42, height: 42, borderRadius: 21,
+    backgroundColor: Colors.surface, borderWidth: 1, borderColor: Colors.border,
+    alignItems: "center", justifyContent: "center",
   },
+  bellIcon: { fontSize: 18 },
+
+  whereCard: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 14,
+    borderWidth: 1.5, borderColor: Colors.border,
+    flexDirection: "row", alignItems: "center", justifyContent: "space-between",
+    marginBottom: 28,
+    shadowColor: "#000", shadowOpacity: 0.06, shadowRadius: 6, shadowOffset: { width: 0, height: 2 },
+    elevation: 2,
+  },
+  whereRow: { flexDirection: "row", alignItems: "center", flex: 1 },
+  dotBlue: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.dotFrom, marginRight: 10, flexShrink: 0 },
+  fromText: { fontSize: 14, color: Colors.textPrimary, fontWeight: "500", maxWidth: 100 },
+  whereDivider: { width: 1, height: 20, backgroundColor: Colors.border, marginHorizontal: 10 },
+  wherePlaceholder: { fontSize: 14, color: Colors.textSecondary, flex: 1 },
+  laterPill: {
+    backgroundColor: "#f1f5f9", borderRadius: 20, paddingHorizontal: 10, paddingVertical: 5,
+    borderWidth: 1, borderColor: Colors.border, marginLeft: 8,
+  },
+  laterText: { fontSize: 12, color: Colors.textSecondary, fontWeight: "600" },
+
+  sectionLabel: {
+    fontSize: 17, fontWeight: "800", color: Colors.textPrimary, marginBottom: 14,
+  },
+
+  carouselScroll: { marginHorizontal: -20, marginBottom: 28 },
+  carouselContent: { paddingHorizontal: 20, gap: 10, paddingRight: 40 },
+  serviceCard: {
+    width: CAROUSEL_CARD_W, height: 90, borderRadius: 16,
+    backgroundColor: Colors.surface, borderWidth: 1.5, borderColor: Colors.border,
+    alignItems: "center", justifyContent: "center", padding: 8,
+    position: "relative",
+    shadowColor: "#000", shadowOpacity: 0.04, shadowRadius: 4, shadowOffset: { width: 0, height: 1 },
+    elevation: 1,
+  },
+  serviceEmoji: { fontSize: 28, marginBottom: 6 },
+  serviceLabel: { fontSize: 11, fontWeight: "700", color: Colors.textPrimary, textAlign: "center" },
+  soonChip: {
+    position: "absolute", top: 6, right: 6,
+    backgroundColor: Colors.accent, borderRadius: 6,
+    paddingHorizontal: 5, paddingVertical: 2,
+  },
+  soonText: { fontSize: 9, fontWeight: "800", color: "#fff" },
+
+  promoCard: {
+    backgroundColor: Colors.surface, borderRadius: 16, padding: 16,
+    borderWidth: 1, borderColor: Colors.border, flexDirection: "row",
+    alignItems: "center", gap: 14, marginBottom: 12,
+  },
+  promoEmoji: { fontSize: 36 },
+  promoBody: { flex: 1 },
+  promoTitle: { fontSize: 15, fontWeight: "700", color: Colors.textPrimary, marginBottom: 4 },
+  promoSub: { fontSize: 13, color: Colors.textSecondary, lineHeight: 18 },
+
+  // Modal
+  modalSafe: { flex: 1, backgroundColor: "#fff" },
+  modalHeader: {
+    flexDirection: "row", alignItems: "center", paddingHorizontal: 16,
+    paddingVertical: 14, borderBottomWidth: 1, borderBottomColor: Colors.border,
+  },
+  backBtn: { marginRight: 12, padding: 4 },
+  backText: { fontSize: 22, color: Colors.textPrimary },
+  modalTitle: { fontSize: 17, fontWeight: "700", color: Colors.textPrimary },
+  searchRow: {
+    flexDirection: "row", alignItems: "flex-start",
+    paddingHorizontal: 16, paddingVertical: 12,
+  },
+  dotOrange: { width: 12, height: 12, borderRadius: 6, backgroundColor: Colors.dotTo, marginRight: 10, marginTop: 14, flexShrink: 0 },
   searchInput: {
-    backgroundColor: "#fff", borderRadius: 14, paddingHorizontal: 16,
-    paddingVertical: 12, fontSize: 15, color: Colors.textPrimary,
-    shadowColor: "#000", shadowOpacity: 0.1, shadowRadius: 8,
-    shadowOffset: { width: 0, height: 2 }, elevation: 4,
+    flex: 1, fontSize: 16, color: Colors.textPrimary,
+    borderBottomWidth: 1.5, borderBottomColor: Colors.primary,
+    paddingBottom: 6, paddingHorizontal: 0,
   },
-
-  sheet: {
-    position: "absolute", bottom: -SHEET_FULL + SHEET_PEEK,
-    left: 0, right: 0, height: SHEET_FULL,
-    backgroundColor: "#fff",
-    borderTopLeftRadius: 24, borderTopRightRadius: 24,
-    shadowColor: "#000", shadowOpacity: 0.12, shadowRadius: 16,
-    shadowOffset: { width: 0, height: -4 }, elevation: 12,
-  },
-  handleWrap: { alignItems: "center", paddingTop: 12, paddingBottom: 8, paddingHorizontal: 20 },
-  handle: { width: 40, height: 4, borderRadius: 2, backgroundColor: Colors.border, marginBottom: 12 },
-  sheetTitle: { fontSize: 15, fontWeight: "700", color: Colors.textPrimary, alignSelf: "flex-start" },
-
-  list: { padding: 16, gap: 12, paddingBottom: 40 },
-
-  empty: { alignItems: "center", paddingTop: 32 },
-  emptyEmoji: { fontSize: 48, marginBottom: 12 },
-  emptyTitle: { fontSize: 17, fontWeight: "700", color: Colors.textPrimary, marginBottom: 6 },
-  emptySubtitle: { fontSize: 14, color: Colors.textSecondary, marginBottom: 20 },
-  offerBtn: {
-    backgroundColor: Colors.primary, borderRadius: 12,
-    paddingHorizontal: 24, paddingVertical: 12,
-  },
-  offerBtnText: { color: "#fff", fontWeight: "700", fontSize: 15 },
+  searchSep: { height: 1, backgroundColor: Colors.border, marginLeft: 48 },
+  loadingRow: { flex: 1, flexDirection: "row", alignItems: "center", gap: 10, paddingTop: 10 },
+  loadingText: { fontSize: 14, color: Colors.textSecondary },
 });
+
+const acStyles = {
+  container: { flex: 1 },
+  textInputContainer: { backgroundColor: "transparent", paddingHorizontal: 0 },
+  textInput: {
+    fontSize: 16, color: Colors.textPrimary,
+    backgroundColor: "transparent",
+    borderBottomWidth: 1.5, borderBottomColor: Colors.primary,
+    paddingHorizontal: 0, height: 44, marginBottom: 0,
+  },
+  listView: {
+    backgroundColor: Colors.surface, borderRadius: 14,
+    borderWidth: 1, borderColor: Colors.border,
+    marginTop: 6, marginHorizontal: 0, elevation: 4,
+    shadowColor: "#000", shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 2 },
+  },
+  row: { backgroundColor: Colors.surface, paddingVertical: 13, paddingHorizontal: 16 },
+  description: { fontSize: 14, color: Colors.textPrimary },
+  separator: { height: 1, backgroundColor: Colors.border },
+};

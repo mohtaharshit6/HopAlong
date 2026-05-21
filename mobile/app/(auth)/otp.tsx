@@ -11,7 +11,7 @@ import api from "../../services/api";
 const OTP_LENGTH = 6;
 
 export default function OtpScreen() {
-  const { phone } = useLocalSearchParams<{ phone: string }>();
+  const { phone, devOtp } = useLocalSearchParams<{ phone: string; devOtp?: string }>();
   const router = useRouter();
   const { setAuth, pendingRoute, setPendingRoute } = useAuthStore();
 
@@ -23,6 +23,13 @@ export default function OtpScreen() {
   useEffect(() => {
     inputRefs.current[0]?.focus();
   }, []);
+
+  // Dev mode: auto-fill when server returns the OTP directly (no Twilio configured)
+  useEffect(() => {
+    if (devOtp && devOtp.length === OTP_LENGTH) {
+      setDigits(devOtp.split(""));
+    }
+  }, [devOtp]);
 
   useEffect(() => {
     if (resendSeconds <= 0) return;
@@ -65,7 +72,10 @@ export default function OtpScreen() {
         router.replace(target as any);
       }
     } catch (err: any) {
-      Alert.alert("Invalid OTP", err.response?.data?.error || "Please check the code and try again");
+      const msg = err.code === "ECONNABORTED" || !err.response
+        ? "Network error. Make sure Flask is running and your phone is on the same Wi-Fi."
+        : err.response?.data?.error || "Please check the code and try again.";
+      Alert.alert("Error", msg);
       setDigits(Array(OTP_LENGTH).fill(""));
       inputRefs.current[0]?.focus();
     } finally {
@@ -100,6 +110,12 @@ export default function OtpScreen() {
         <Text style={styles.phone}>{maskedPhone}</Text>
       </Text>
 
+      {devOtp ? (
+        <View style={styles.devBanner}>
+          <Text style={styles.devBannerText}>🛠 Dev mode — OTP auto-filled (no SMS sent)</Text>
+        </View>
+      ) : null}
+
       <View style={styles.otpRow}>
         {digits.map((digit, i) => (
           <TextInput
@@ -133,9 +149,11 @@ export default function OtpScreen() {
         </Text>
       </TouchableOpacity>
 
-      <Text style={styles.hint}>
-        💡 Check the Flask terminal window for the OTP (dev mode)
-      </Text>
+      {!devOtp && (
+        <Text style={styles.hint}>
+          💡 Check the Flask terminal window for the OTP (dev mode)
+        </Text>
+      )}
     </View>
   );
 }
@@ -157,6 +175,12 @@ const styles = StyleSheet.create({
     backgroundColor: Colors.surface,
   },
   boxFilled: { borderColor: Colors.primary, backgroundColor: "#f0f9ff" },
+
+  devBanner: {
+    backgroundColor: "#fefce8", borderRadius: 10, padding: 10,
+    borderWidth: 1, borderColor: "#fde68a", marginBottom: 20,
+  },
+  devBannerText: { fontSize: 12, color: "#92400e", fontWeight: "600", textAlign: "center" },
 
   resendRow: { marginTop: 32, alignItems: "center" },
   resendText: { fontSize: 14, color: Colors.primary, fontWeight: "600" },
