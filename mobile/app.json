@@ -26,7 +26,12 @@
           "apiKey": "AIzaSyA1x9uHhx-ka4qfLfkttn_I-lQy30aYObk"
         }
       },
-      "package": "com.hopalong.app"
+      "package": "com.hopalong.app",
+      "permissions": [
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.RECORD_AUDIO"
+      ]
     },
     "ios": {
       "bundleIdentifier": "com.hopalong.app",
@@ -59,6 +64,12 @@
       ],
       "expo-asset",
       "expo-font"
-    ]
+    ],
+    "extra": {
+      "router": {},
+      "eas": {
+        "projectId": "cd54cbed-7011-484f-9482-fb00cb0cba83"
+      }
+    }
   }
 }
